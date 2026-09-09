@@ -1,0 +1,52 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "de-mail-desktop"
+version = "0.1.0"
+description = "A verified, user-controlled Gmail archive utility for Windows"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+  "PySide6>=6.8,<7",
+  "google-auth>=2.35,<3",
+  "google-auth-oauthlib>=1.2,<2",
+  "httpx>=0.27,<1",
+  "keyring>=25,<26",
+  "pywin32>=306; sys_platform == 'win32'",
+]
+
+[project.optional-dependencies]
+test = [
+  "pytest>=8.3,<9",
+  "pytest-qt>=4.4,<5",
+  "pytest-cov>=6,<7",
+]
+dev = [
+  "mypy>=1.13,<2",
+  "ruff>=0.8,<1",
+  "Nuitka>=2.5,<3",
+]
+
+[project.scripts]
+de-mail-desktop = "demail.app:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/demail"]
+
+[tool.pytest.ini_options]
+addopts = "-ra --strict-markers"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+
