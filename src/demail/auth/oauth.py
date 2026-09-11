@@ -37,6 +37,11 @@ class OAuthAuthorization:
             raise PermissionError("Google did not grant exactly the required read-only scope.")
         if not credentials.refresh_token:
             raise PermissionError("Google did not return a refresh credential.")
+        expiry = credentials.expiry
+        if expiry is not None and expiry.tzinfo is None:
+            expiry = expiry.replace(tzinfo=UTC)
+        elif expiry is not None:
+            expiry = expiry.astimezone(UTC)
         stored = StoredCredentials(
             token=credentials.token,
             refresh_token=credentials.refresh_token,
@@ -44,8 +49,7 @@ class OAuthAuthorization:
             client_id=credentials.client_id,
             client_secret=credentials.client_secret,
             scopes=granted,
-            expiry=credentials.expiry.astimezone(UTC).isoformat() if credentials.expiry else None,
+            expiry=expiry.isoformat() if expiry else None,
         )
         self.store.save(stored)
         return stored
-
