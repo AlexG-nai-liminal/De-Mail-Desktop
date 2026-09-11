@@ -209,6 +209,14 @@ tempCodeRunnerFile.py
 # PyPI configuration file
 .pypirc
 
+# Google OAuth configuration and authorization material
+credentials.json
+client_secret*.json
+*.oauth-client.json
+token.json
+authorization.bin
+authorization.bin.partial
+
 # Marimo
 marimo/_static/
 marimo/_lsp/
