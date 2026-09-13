@@ -13,8 +13,6 @@ dependencies = [
   "google-auth>=2.35,<3",
   "google-auth-oauthlib>=1.2,<2",
   "httpx>=0.27,<1",
-  "keyring>=25,<26",
-  "pywin32>=306; sys_platform == 'win32'",
 ]
 
 [project.optional-dependencies]
@@ -39,6 +37,14 @@ packages = ["src/demail"]
 addopts = "-ra --strict-markers"
 testpaths = ["tests"]
 
+[tool.coverage.run]
+source = ["demail"]
+
+[tool.coverage.report]
+fail_under = 90
+show_missing = true
+skip_covered = true
+
 [tool.ruff]
 line-length = 100
 target-version = "py312"
@@ -49,4 +55,3 @@ select = ["E", "F", "I", "UP", "B", "SIM"]
 [tool.mypy]
 python_version = "3.12"
 strict = true
-

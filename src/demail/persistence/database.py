@@ -3,7 +3,7 @@ from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
 from pathlib import Path
 
-LATEST_SCHEMA_VERSION = 1
+LATEST_SCHEMA_VERSION = 2
 
 MIGRATIONS: dict[int, str] = {
     1: """
@@ -68,6 +68,10 @@ MIGRATIONS: dict[int, str] = {
         display_path TEXT NOT NULL,
         last_used_at TEXT NOT NULL
     );
+    """,
+    2: """
+    ALTER TABLE archive_operations ADD COLUMN inline_attachment_count INTEGER NOT NULL
+        DEFAULT 0 CHECK (inline_attachment_count >= 0);
     """,
 }
 

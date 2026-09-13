@@ -41,6 +41,28 @@ def test_migration_is_idempotent(tmp_path: Path) -> None:
         assert connection.execute("SELECT COUNT(*) FROM archive_operations").fetchone()[0] == 0
 
 
+def test_existing_schema_one_database_gains_inline_attachment_total(tmp_path: Path) -> None:
+    path = tmp_path / "old.db"
+    with sqlite3.connect(path) as connection:
+        connection.executescript(database_module.MIGRATIONS[1])
+        connection.execute("PRAGMA user_version = 1")
+        connection.execute(
+            "INSERT INTO archive_operations "
+            "(created_at, account_email, selection_json, selection_description, "
+            "destination_path, archive_folder_name, selected_count) "
+            "VALUES ('2026-09-09T00:00:00Z', 'old@example.com', '{}', 'All mail', "
+            "'C:/Archive', 'old', 0)"
+        )
+    Database(path).migrate()
+    with sqlite3.connect(path) as connection:
+        version = connection.execute("PRAGMA user_version").fetchone()[0]
+        inline_total = connection.execute(
+            "SELECT inline_attachment_count FROM archive_operations"
+        ).fetchone()[0]
+    assert version == LATEST_SCHEMA_VERSION
+    assert inline_total == 0
+
+
 def test_operation_and_all_selected_rows_are_inserted_atomically(tmp_path: Path) -> None:
     database = Database(tmp_path / "de-mail.db")
     database.migrate()

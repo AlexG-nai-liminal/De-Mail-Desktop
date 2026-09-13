@@ -3,6 +3,7 @@ import sqlite3
 from collections.abc import Sequence
 from datetime import UTC, datetime
 
+from demail.archive.eml_scanner import EmlScan
 from demail.domain.selection import SelectionCriteria
 from demail.gmail.client import GmailMessageMetadata, GmailMessageRef
 
@@ -18,6 +19,7 @@ class ArchiveRepository:
         *,
         account_email: str,
         account_messages_total: int,
+        account_threads_total: int | None = None,
         criteria: SelectionCriteria,
         gmail_query: str | None,
         gmail_label_ids: tuple[str, ...],
@@ -30,6 +32,7 @@ class ArchiveRepository:
             "created_at": created_at.astimezone(UTC).isoformat(),
             "account_email": account_email,
             "account_messages_total": account_messages_total,
+            "account_threads_total": account_threads_total,
             "selection_json": json.dumps(
                 {
                     "startDate": criteria.start_date,
@@ -90,11 +93,22 @@ class ArchiveRepository:
                 "SELECT * FROM archive_operations WHERE id = ?", (operation_id,)
             ).fetchone()
 
+    def operations(self, limit: int = 100) -> list[sqlite3.Row]:
+        if not 1 <= limit <= 500:
+            raise ValueError("History limit must be from 1 to 500")
+        with self.database.connect() as connection:
+            return connection.execute(
+                "SELECT * FROM archive_operations ORDER BY created_at DESC, id DESC LIMIT ?",
+                (limit,),
+            ).fetchall()
+
     def pending_messages(self, operation_id: int) -> list[sqlite3.Row]:
         with self.database.connect() as connection:
             return connection.execute(
-                "SELECT * FROM archive_messages WHERE operation_id = ? AND exported = 0 "
-                "AND verification = 'PENDING' ORDER BY gmail_message_id",
+                "SELECT * FROM archive_messages WHERE operation_id = ? AND ("
+                "(exported = 0 AND verification IN ('PENDING','EXPORT_FAILED')) OR "
+                "verification IN ('MISSING','UNREADABLE','SIZE_MISMATCH','HASH_MISMATCH')"
+                ") ORDER BY gmail_message_id",
                 (operation_id,),
             ).fetchall()
 
@@ -137,6 +151,33 @@ class ArchiveRepository:
                 (byte_size, sha256, operation_id, message_id),
             )
 
+    def record_eml_scan(
+        self, operation_id: int, message_id: str, scan: EmlScan
+    ) -> None:
+        with self.database.connect() as connection:
+            connection.execute(
+                "UPDATE archive_messages SET subject = COALESCE(?, subject), "
+                "sender = COALESCE(?, sender), recipients = ?, "
+                "cc_recipients = ?, bcc_recipients = ?, date_header = ?, "
+                "rfc822_message_id = ?, attachment_count = ?, "
+                "inline_attachment_count = ?, attachment_names = ? "
+                "WHERE operation_id = ? AND gmail_message_id = ?",
+                (
+                    scan.subject,
+                    scan.sender,
+                    scan.recipients,
+                    scan.cc_recipients,
+                    scan.bcc_recipients,
+                    scan.date_header,
+                    scan.rfc822_message_id,
+                    scan.attachment_count,
+                    scan.inline_attachment_count,
+                    json.dumps(scan.attachment_names),
+                    operation_id,
+                    message_id,
+                ),
+            )
+
     def mark_export_failed(self, operation_id: int, message_id: str, reason: str) -> None:
         with self.database.connect() as connection:
             connection.execute(
@@ -161,8 +202,7 @@ class ArchiveRepository:
                 (status, detail, operation_id),
             )
 
-    def finalize_counts(self, operation_id: int, status: str) -> None:
-        now = datetime.now(UTC).isoformat()
+    def refresh_counts(self, operation_id: int) -> None:
         with self.database.connect() as connection:
             connection.execute(
                 "UPDATE archive_operations SET "
@@ -174,16 +214,42 @@ class ArchiveRepository:
                 "WHERE m.operation_id = ? AND m.verification NOT IN ('PENDING','VERIFIED')), "
                 "total_bytes = (SELECT COALESCE(SUM(byte_size), 0) FROM archive_messages m "
                 "WHERE m.operation_id = ? AND m.exported = 1), "
-                "status = ?, completed_at = ?, verified_at = CASE WHEN ? = 'VERIFIED' "
-                "THEN ? ELSE NULL END WHERE id = ?",
+                "attachment_count = (SELECT COALESCE(SUM(attachment_count), 0) "
+                "FROM archive_messages m WHERE m.operation_id = ? AND m.exported = 1), "
+                "inline_attachment_count = (SELECT COALESCE(SUM(inline_attachment_count), 0) "
+                "FROM archive_messages m WHERE m.operation_id = ? AND m.exported = 1) WHERE id = ?",
+                (operation_id,) * 7,
+            )
+
+    def finalize_counts(
+        self, operation_id: int, status: str, completed_at: datetime | None = None
+    ) -> None:
+        now = (completed_at or datetime.now(UTC)).astimezone(UTC).isoformat()
+        with self.database.connect() as connection:
+            connection.execute(
+                "UPDATE archive_operations SET "
+                "exported_count = (SELECT COUNT(*) FROM archive_messages m "
+                "WHERE m.operation_id = ? AND m.exported = 1), "
+                "verified_count = (SELECT COUNT(*) FROM archive_messages m "
+                "WHERE m.operation_id = ? AND m.verification = 'VERIFIED'), "
+                "failed_count = (SELECT COUNT(*) FROM archive_messages m "
+                "WHERE m.operation_id = ? AND m.verification NOT IN ('PENDING','VERIFIED')), "
+                "total_bytes = (SELECT COALESCE(SUM(byte_size), 0) FROM archive_messages m "
+                "WHERE m.operation_id = ? AND m.exported = 1), "
+                "attachment_count = (SELECT COALESCE(SUM(attachment_count), 0) "
+                "FROM archive_messages m WHERE m.operation_id = ? AND m.exported = 1), "
+                "inline_attachment_count = (SELECT COALESCE(SUM(inline_attachment_count), 0) "
+                "FROM archive_messages m WHERE m.operation_id = ? AND m.exported = 1), "
+                "status = ?, completed_at = ?, verified_at = ? WHERE id = ?",
                 (
+                    operation_id,
+                    operation_id,
                     operation_id,
                     operation_id,
                     operation_id,
                     operation_id,
                     status,
                     now,
-                    status,
                     now,
                     operation_id,
                 ),

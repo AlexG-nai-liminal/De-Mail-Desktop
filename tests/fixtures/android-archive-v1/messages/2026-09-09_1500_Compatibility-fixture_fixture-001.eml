@@ -1,0 +1,18 @@
+From: Archive Fixture <fixture@example.invalid>
+To: Reader <reader@example.invalid>
+Subject: Compatibility fixture
+Date: Wed, 9 Sep 2026 15:00:00 +0000
+Message-ID: <fixture-001@example.invalid>
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary=fixture-boundary
+
+--fixture-boundary
+Content-Type: text/plain; charset=utf-8
+
+This is a non-sensitive compatibility fixture.
+--fixture-boundary
+Content-Type: text/plain; name=fixture.txt
+Content-Disposition: attachment; filename=fixture.txt
+
+fixture attachment
+--fixture-boundary--

@@ -39,10 +39,30 @@ QPushButton[nav="true"] {{
 QPushButton[nav="true"]:checked {{ background: {CARD_HOVER}; color: {WHITE}; }}
 QLineEdit, QComboBox, QDateEdit, QPlainTextEdit {{
     background: {PANEL}; border: 1px solid {BORDER}; border-radius: 8px;
-    padding: 9px 10px; selection-background-color: {WHITE}; selection-color: {BLACK};
+    min-height: 22px; padding: 9px 10px;
+    selection-background-color: {WHITE}; selection-color: {BLACK};
 }}
 QLineEdit:focus, QComboBox:focus, QDateEdit:focus, QPlainTextEdit:focus {{
     border: 2px solid {WHITE}; padding: 8px 9px;
+}}
+QComboBox QAbstractItemView::item {{ min-height: 30px; padding: 5px 8px; }}
+QPushButton[quickArchive="true"] {{
+    background: {PANEL}; border: 1px solid {BORDER}; border-radius: 0;
+    min-height: 46px; padding: 10px 8px; font-size: 12px; font-weight: 650;
+}}
+QPushButton[quickArchive="true"][segmentPosition="middle"],
+QPushButton[quickArchive="true"][segmentPosition="last"] {{ border-left: 0; }}
+QPushButton[quickArchive="true"][segmentPosition="first"] {{
+    border-top-left-radius: 9px; border-bottom-left-radius: 9px;
+}}
+QPushButton[quickArchive="true"][segmentPosition="last"] {{
+    border-top-right-radius: 9px; border-bottom-right-radius: 9px;
+}}
+QPushButton[quickArchive="true"]:checked {{
+    background: {WHITE}; color: {BLACK}; border-color: {WHITE};
+}}
+QPushButton[quickArchive="true"]:disabled {{
+    background: {PANEL}; color: #666666; border-color: #202020;
 }}
 QProgressBar {{ background: {CARD}; border: 1px solid {BORDER}; border-radius: 5px; height: 8px; }}
 QProgressBar::chunk {{ background: {WHITE}; border-radius: 4px; }}
@@ -64,4 +84,3 @@ def apply_theme(application: QApplication) -> None:
     palette.setColor(QPalette.ColorRole.HighlightedText, QColor(BLACK))
     application.setPalette(palette)
     application.setStyleSheet(STYLE_SHEET)
-

@@ -3,7 +3,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from demail.auth.oauth import GMAIL_READONLY_SCOPE
-from demail.auth.token_provider import GoogleTokenProvider
+from demail.auth.token_provider import GoogleAuthorizationError, GoogleTokenProvider
 from demail.auth.token_store import StoredCredentials
 
 
@@ -69,3 +69,18 @@ def test_expired_token_is_refreshed_and_saved(monkeypatch: pytest.MonkeyPatch) -
     assert GoogleTokenProvider(store).access_token() == "renewed"  # type: ignore[arg-type]
     assert store.saved is not None
     assert store.saved.token == "renewed"
+
+
+def test_revoked_refresh_credential_fails_safely_without_overwriting_store(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = Store(stored(expiry=datetime.now(UTC) - timedelta(hours=1)))
+
+    def revoked(credentials, request: object) -> None:
+        raise RuntimeError("server response contained private credential data")
+
+    monkeypatch.setattr("google.oauth2.credentials.Credentials.refresh", revoked)
+    with pytest.raises(GoogleAuthorizationError, match="expired or was revoked") as caught:
+        GoogleTokenProvider(store).access_token()  # type: ignore[arg-type]
+    assert "private credential" not in str(caught.value)
+    assert store.saved is None

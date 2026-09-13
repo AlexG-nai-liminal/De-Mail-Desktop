@@ -62,7 +62,15 @@ class AtomicArchiveFile:
         traceback: TracebackType | None,
     ) -> None:
         if exception_type is None:
-            self.finish()
+            try:
+                self.finish()
+            except Exception:
+                if self._stream is not None:
+                    self._stream.close()
+                    self._stream = None
+                with suppress(OSError):
+                    self.partial_path.unlink(missing_ok=True)
+                raise
             return
         if self._stream is not None:
             self._stream.close()

@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
+from pathlib import Path
 
 
 class OperationStatus(StrEnum):
@@ -66,3 +67,53 @@ class ArchiveMessage:
         if self.byte_size < 0:
             raise ValueError("byte_size cannot be negative")
 
+
+@dataclass(frozen=True, slots=True)
+class ArchiveHistoryItem:
+    operation_id: int
+    created_at: str
+    account_email: str
+    selection_description: str
+    destination_path: str
+    archive_folder_name: str
+    status: OperationStatus
+    selected_count: int
+    exported_count: int
+    verified_count: int
+    failed_count: int
+    total_bytes: int
+    worker_locked: bool = False
+
+    def __post_init__(self) -> None:
+        if self.operation_id <= 0:
+            raise ValueError("Archive operation ID must be positive")
+        if not self.account_email.strip():
+            raise ValueError("Archive history account cannot be blank")
+        if not self.destination_path.strip() or not self.archive_folder_name.strip():
+            raise ValueError("Archive history path cannot be blank")
+        counts = (
+            self.selected_count,
+            self.exported_count,
+            self.verified_count,
+            self.failed_count,
+            self.total_bytes,
+        )
+        if any(value < 0 for value in counts):
+            raise ValueError("Archive history counts cannot be negative")
+        if self.exported_count > self.selected_count:
+            raise ValueError("Exported count cannot exceed selected count")
+        if self.verified_count > self.exported_count:
+            raise ValueError("Verified count cannot exceed exported count")
+        if self.status == OperationStatus.VERIFIED and not (
+            self.selected_count == self.exported_count == self.verified_count
+            and self.failed_count == 0
+        ):
+            raise ValueError("Verified history must account for every selected message")
+
+    @property
+    def archive_path(self) -> Path:
+        return Path(self.destination_path) / "de-Mail Archive" / self.archive_folder_name
+
+    @property
+    def can_resume(self) -> bool:
+        return self.status != OperationStatus.VERIFIED and not self.worker_locked

@@ -4,6 +4,7 @@ from pathlib import Path
 import pytest
 
 from demail.auth.client_config import (
+    MAX_CLIENT_FILE_BYTES,
     OAuthClientConfigError,
     load_desktop_client,
     require_same_project,
@@ -75,3 +76,51 @@ def test_different_cloud_project_is_rejected(tmp_path: Path) -> None:
     with pytest.raises(OAuthClientConfigError, match="different Google Cloud project"):
         require_same_project(load_desktop_client(path), "123-android.apps.googleusercontent.com")
 
+
+@pytest.mark.parametrize(
+    "redirect",
+    [
+        "http://localhost.example.invalid",
+        "http://localhost:8080",
+        "http://localhost/callback",
+        "https://localhost",
+        "http://user@localhost",
+        "http://localhost?forward=elsewhere",
+        "http://localhost#fragment",
+    ],
+)
+def test_deceptive_or_non_loopback_redirect_is_rejected(
+    tmp_path: Path, redirect: str
+) -> None:
+    path = tmp_path / "client.json"
+    document = desktop_document()
+    document["installed"]["redirect_uris"] = [redirect]
+    write(path, document)
+    with pytest.raises(OAuthClientConfigError, match="localhost callback"):
+        load_desktop_client(path)
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("auth_uri", "https://accounts.google.com.example.invalid/o/oauth2/auth"),
+        ("auth_uri", "http://accounts.google.com/o/oauth2/auth"),
+        ("token_uri", "https://oauth2.googleapis.com.example.invalid/token"),
+    ],
+)
+def test_non_google_oauth_endpoint_is_rejected(
+    tmp_path: Path, field: str, value: str
+) -> None:
+    path = tmp_path / "client.json"
+    document = desktop_document()
+    document["installed"][field] = value
+    write(path, document)
+    with pytest.raises(OAuthClientConfigError, match="official Google"):
+        load_desktop_client(path)
+
+
+def test_client_file_read_is_bounded(tmp_path: Path) -> None:
+    path = tmp_path / "oversized.json"
+    path.write_bytes(b" " * (MAX_CLIENT_FILE_BYTES + 1))
+    with pytest.raises(OAuthClientConfigError, match="unexpectedly large"):
+        load_desktop_client(path)

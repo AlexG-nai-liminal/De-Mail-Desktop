@@ -1,0 +1,76 @@
+{
+  "schemaVersion": 1,
+  "generator": "de-Mail compatibility fixture 1",
+  "archive": {
+    "archiveId": "fixture-archive-001",
+    "createdAt": "2026-09-09T15:00:00Z",
+    "completedAt": "2026-09-09T15:00:01Z",
+    "account": {
+      "emailAddress": "fixture@example.invalid",
+      "gmailMessagesTotal": 1,
+      "gmailThreadsTotal": 1
+    },
+    "selection": {
+      "description": "1 manually selected message",
+      "gmailLabelIds": [],
+      "includeSpamAndTrash": false,
+      "criteria": {
+        "includeSpamAndTrash": false,
+        "explicitMessageIds": [
+          "fixture-001"
+        ]
+      }
+    },
+    "destination": {
+      "folderDisplayPath": "Compatibility Fixture",
+      "archiveFolderName": "android-archive-v1",
+      "messagesFolderName": "messages"
+    },
+    "counts": {
+      "selected": 1,
+      "exported": 1,
+      "failed": 0,
+      "verified": 1
+    },
+    "totalArchivedBytes": 534,
+    "totalAttachments": 1,
+    "totalInlineAttachments": 0
+  },
+  "verification": {
+    "status": "VERIFIED",
+    "verifiedAt": "2026-09-09T15:00:01Z",
+    "selected": 1,
+    "exported": 1,
+    "verified": 1,
+    "failed": 0,
+    "missing": 0,
+    "mismatched": 0,
+    "totalVerifiedBytes": 534,
+    "method": "Every exported file was reopened from the destination, read back in full, and its SHA-256 compared with the hash recorded when it was written."
+  },
+  "messages": [
+    {
+      "gmailMessageId": "fixture-001",
+      "gmailThreadId": "fixture-thread-001",
+      "subject": "Compatibility fixture",
+      "from": "Archive Fixture <fixture@example.invalid>",
+      "to": "Reader <reader@example.invalid>",
+      "date": "Wed, 9 Sep 2026 15:00:00 +0000",
+      "internalDate": "2026-09-09T15:00:00Z",
+      "rfc822MessageId": "<fixture-001@example.invalid>",
+      "path": "messages/2026-09-09_1500_Compatibility-fixture_fixture-001.eml",
+      "byteSize": 534,
+      "sha256": "d80a2e14c8de71d6f86a2b4e95acf7b2395eace6337ae0e09e79b12b20eee6b1",
+      "attachmentCount": 1,
+      "inlineAttachmentCount": 0,
+      "attachmentNames": [
+        "fixture.txt"
+      ],
+      "gmailLabelIds": [
+        "INBOX"
+      ],
+      "verification": "VERIFIED"
+    }
+  ],
+  "failures": []
+}

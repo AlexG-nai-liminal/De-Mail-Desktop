@@ -2,7 +2,12 @@ from pathlib import Path
 
 import pytest
 
-from demail.auth.token_store import CredentialStore, StoredCredentials
+from demail.auth.token_store import (
+    MAX_PLAINTEXT_CREDENTIAL_BYTES,
+    MAX_PROTECTED_CREDENTIAL_BYTES,
+    CredentialStore,
+    StoredCredentials,
+)
 
 
 class ReversibleProtector:
@@ -80,3 +85,24 @@ def test_blank_refresh_credential_is_never_persisted() -> None:
     with pytest.raises(ValueError, match="refresh credential"):
         credentials("")
 
+
+def test_oversized_protected_authorization_is_rejected_before_decryption(
+    tmp_path: Path,
+) -> None:
+    class MustNotDecrypt(ReversibleProtector):
+        def unprotect(self, ciphertext: bytes) -> bytes:
+            raise AssertionError("oversized data reached the decryptor")
+
+    path = tmp_path / "authorization.bin"
+    path.write_bytes(b"x" * (MAX_PROTECTED_CREDENTIAL_BYTES + 1))
+    with pytest.raises(ValueError, match="invalid or unreadable"):
+        CredentialStore(path, MustNotDecrypt()).load()
+
+
+def test_oversized_plaintext_authorization_is_never_written(tmp_path: Path) -> None:
+    path = tmp_path / "authorization.bin"
+    huge = credentials("x" * MAX_PLAINTEXT_CREDENTIAL_BYTES)
+    with pytest.raises(ValueError, match="unexpectedly large"):
+        CredentialStore(path, ReversibleProtector()).save(huge)
+    assert not path.exists()
+    assert not path.with_name("authorization.bin.partial").exists()

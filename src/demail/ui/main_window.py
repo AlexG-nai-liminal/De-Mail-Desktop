@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from PySide6.QtCore import QSettings, Qt
 from PySide6.QtWidgets import (
     QFileDialog,
@@ -11,9 +13,15 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from demail.windows.shell import open_folder
+
+from .archive import ArchiveController
 from .archive_flow import ArchiveWorkflow
 from .components import Card, page_heading
 from .connection import ConnectedMailbox, ConnectionController
+from .diagnostics import DiagnosticController, ProblemReportPage, save_diagnostic_report
+from .history import HistoryController, HistoryPage
+from .selection import SelectionController
 
 NAVIGATION = (
     ("Archive Gmail", "archive"),
@@ -29,6 +37,11 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.settings = settings or QSettings("de-Mail", "de-Mail Desktop")
         self.connection_controller: ConnectionController | None = None
+        self.selection_controller: SelectionController | None = None
+        self.archive_controller: ArchiveController | None = None
+        self.history_controller: HistoryController | None = None
+        self.diagnostic_controller: DiagnosticController | None = None
+        self.connected_account: str | None = None
         self.setWindowTitle("de-Mail Desktop")
         self.setMinimumSize(960, 640)
         self.resize(1180, 760)
@@ -44,9 +57,9 @@ class MainWindow(QMainWindow):
         self.content = QStackedWidget()
         self.archive_workflow = ArchiveWorkflow()
         self.content.addWidget(self.archive_workflow)
-        self.content.addWidget(
-            self._simple_page("History", "Your archive operations", "No archives yet.")
-        )
+        self.history_page = HistoryPage()
+        self.history_page.open_folder_requested.connect(self._open_history_folder)
+        self.content.addWidget(self.history_page)
         self.content.addWidget(
             self._simple_page(
                 "Reclaim storage",
@@ -54,14 +67,9 @@ class MainWindow(QMainWindow):
                 "Reclaim uses separate authorization and will never permanently delete mail.",
             )
         )
-        self.content.addWidget(
-            self._simple_page(
-                "Report a problem",
-                "Review diagnostics before sharing",
-                "Nothing is sent automatically. Sensitive mail details and credentials "
-                "are excluded.",
-            )
-        )
+        self.problem_report_page = ProblemReportPage()
+        self.problem_report_page.save_requested.connect(self._save_diagnostic_report)
+        self.content.addWidget(self.problem_report_page)
         self.content.addWidget(self._settings_page())
         layout.addWidget(self.content, 1)
         self.setCentralWidget(root)
@@ -167,7 +175,86 @@ class MainWindow(QMainWindow):
         controller.failed.connect(self.archive_workflow.set_connection_error)
         controller.connected.connect(self._connected)
 
+    def attach_selection_controller(self, controller: SelectionController) -> None:
+        self.selection_controller = controller
+        self.archive_workflow.selection_options_requested.connect(controller.load_labels)
+        self.archive_workflow.eras_requested.connect(controller.scan_eras)
+        self.archive_workflow.manual_candidates_requested.connect(controller.load_candidates)
+        self.archive_workflow.exact_count_requested.connect(controller.calculate_exact_count)
+        controller.eras_loaded.connect(self.archive_workflow.set_eras)
+        controller.labels_loaded.connect(self.archive_workflow.set_labels)
+        controller.candidates_loaded.connect(self.archive_workflow.set_manual_candidates)
+        controller.exact_count_loaded.connect(self._selection_counted)
+        controller.started.connect(self._selection_started)
+        controller.failed.connect(self._selection_failed)
+
+    def attach_archive_controller(self, controller: ArchiveController) -> None:
+        self.archive_controller = controller
+        flow = self.archive_workflow
+        flow.destination_requested.connect(self._choose_destination)
+        flow.archive_requested.connect(controller.start)
+        controller.started.connect(flow.set_archive_started)
+        controller.progress.connect(flow.set_archive_progress)
+        controller.completed.connect(flow.set_archive_complete)
+        controller.failed.connect(flow.set_archive_error)
+        self.history_page.resume_requested.connect(self._resume_operation)
+
+    def attach_history_controller(self, controller: HistoryController) -> None:
+        self.history_controller = controller
+        self.history_page.refresh_requested.connect(controller.load)
+        controller.started.connect(self.history_page.set_loading)
+        controller.loaded.connect(self.history_page.set_items)
+        controller.failed.connect(self.history_page.set_error)
+        if self.archive_controller:
+            self.archive_controller.completed.connect(lambda _: controller.load())
+
+    def attach_diagnostic_controller(self, controller: DiagnosticController) -> None:
+        self.diagnostic_controller = controller
+        self.problem_report_page.build_requested.connect(controller.build)
+        controller.started.connect(self.problem_report_page.set_building)
+        controller.built.connect(self.problem_report_page.set_report)
+        controller.failed.connect(self.problem_report_page.set_error)
+
+    def _save_diagnostic_report(self, text: str) -> None:
+        path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Save diagnostic report",
+            "de-Mail-report.txt",
+            "Text files (*.txt)",
+        )
+        if not path:
+            return
+        try:
+            save_diagnostic_report(Path(path), text)
+        except (OSError, ValueError):
+            self.problem_report_page.set_error("The diagnostic report could not be saved.")
+            return
+        self.problem_report_page.set_saved(path)
+
+    def _resume_operation(self, operation_id: int) -> None:
+        if self.archive_controller is None:
+            self.history_page.set_error("Archive recovery is unavailable.")
+            return
+        self.show_page(0)
+        self.archive_controller.resume(operation_id)
+
+    def _open_history_folder(self, path: str) -> None:
+        try:
+            open_folder(Path(path))
+        except OSError:
+            self.history_page.set_error("The archive folder is unavailable.")
+
+    def _choose_destination(self) -> None:
+        destination = QFileDialog.getExistingDirectory(
+            self,
+            "Choose archive destination",
+            self.archive_workflow.destination_input.text(),
+        )
+        if destination:
+            self.archive_workflow.set_destination(destination)
+
     def _connected(self, mailbox: ConnectedMailbox) -> None:
+        self.connected_account = mailbox.email_address
         message_word = "message" if mailbox.messages_total == 1 else "messages"
         thread_word = "conversation" if mailbox.threads_total == 1 else "conversations"
         totals = (
@@ -175,9 +262,41 @@ class MainWindow(QMainWindow):
             f"{mailbox.threads_total:,} {thread_word}"
         )
         self.archive_workflow.set_connected(mailbox.email_address, totals)
+        self.archive_workflow.selection_options_requested.emit()
+
+    def _selection_started(self, context: str) -> None:
+        if context == "eras":
+            self.archive_workflow.set_era_scan_running()
+        elif context == "count":
+            self.archive_workflow.set_counting()
+
+    def _selection_failed(self, context: str, message: str) -> None:
+        if context == "eras":
+            self.archive_workflow.set_era_scan_error(message)
+            return
+        elif context == "candidates":
+            self.archive_workflow.load_candidates_button.setText("Try loading messages again")
+            self.archive_workflow.load_candidates_button.setEnabled(True)
+        self.archive_workflow.set_selection_error(message)
+
+    def _selection_counted(self, result: tuple[object, int]) -> None:
+        criteria, count = result
+        try:
+            current = self.archive_workflow.selection_criteria()
+        except ValueError:
+            return
+        if criteria == current:
+            self.archive_workflow.set_exact_count(count)
 
     def show_page(self, index: int) -> None:
         if not 0 <= index < self.content.count():
             raise ValueError("Navigation page is out of range")
         self.content.setCurrentIndex(index)
         self.nav_buttons[index].setChecked(True)
+        if index == 1 and self.history_controller:
+            self.history_controller.load()
+        if index == 3 and self.diagnostic_controller:
+            self.diagnostic_controller.build(
+                self.problem_report_page.what_happened.toPlainText(),
+                self.problem_report_page.what_doing.toPlainText(),
+            )

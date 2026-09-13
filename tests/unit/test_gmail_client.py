@@ -87,6 +87,66 @@ def test_manual_selection_makes_no_http_request() -> None:
     assert [message.id for message in result.messages] == ["b", "a"]
 
 
+def test_recent_candidates_apply_filters_and_load_metadata() -> None:
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        if request.url.path.endswith("/messages"):
+            return httpx.Response(200, json={"messages": [{"id": "message-1"}]})
+        return httpx.Response(
+            200,
+            json={
+                "id": "message-1",
+                "threadId": "thread-1",
+                "internalDate": "1234",
+                "labelIds": ["Label_1"],
+                "payload": {
+                    "headers": [
+                        {"name": "Subject", "value": "A receipt"},
+                        {"name": "From", "value": "shop@example.com"},
+                    ]
+                },
+            },
+        )
+
+    result = client(handler).recent_messages(
+        SelectionCriteria(
+            sender="shop@example.com",
+            label_id="Label_1",
+            include_spam_and_trash=True,
+        ),
+        limit=25,
+    )
+    assert result[0].subject == "A receipt"
+    assert requests[0].url.params.get("maxResults") == "25"
+    assert requests[0].url.params.get("q") == "from:shop@example.com"
+    assert requests[0].url.params.get("labelIds") == "Label_1"
+    assert requests[0].url.params.get("includeSpamTrash") == "true"
+
+
+@pytest.mark.parametrize("limit", [0, 501])
+def test_recent_candidates_reject_out_of_range_limit(limit: int) -> None:
+    with pytest.raises(ValueError, match="limit"):
+        client(lambda _: httpx.Response(500)).recent_messages(SelectionCriteria(), limit)
+
+
+def test_recent_candidates_reject_manual_criteria_without_network() -> None:
+    def forbidden(_: httpx.Request) -> httpx.Response:
+        raise AssertionError("invalid candidate lookup must not call Gmail")
+
+    with pytest.raises(ValueError, match="Manual"):
+        client(forbidden).recent_messages(SelectionCriteria(explicit_message_ids=("a",)))
+
+
+@pytest.mark.parametrize("document", [{"messages": "bad"}, {"messages": [None]}])
+def test_recent_candidates_fail_closed_on_malformed_rows(document: dict) -> None:
+    with pytest.raises(GmailApiError, match="malformed candidate list"):
+        client(lambda _: httpx.Response(200, json=document)).recent_messages(
+            SelectionCriteria()
+        )
+
+
 @pytest.mark.parametrize("ids", [("a", "a"), ("a", "")])
 def test_malformed_manual_ids_are_rejected(ids: tuple[str, ...]) -> None:
     with pytest.raises(ValueError):
@@ -108,6 +168,15 @@ def test_transient_status_retries_then_succeeds() -> None:
     assert result.exact_count == 0
     assert attempts == 3
     assert delays == [1, 2]
+
+
+def test_exhausted_transient_status_is_marked_as_connection_failure() -> None:
+    with pytest.raises(GmailApiError) as caught:
+        client(lambda _: httpx.Response(503), max_attempts=1).resolve_selection(
+            SelectionCriteria()
+        )
+    assert caught.value.status_code == 503
+    assert caught.value.connection_failure
 
 
 @pytest.mark.parametrize(

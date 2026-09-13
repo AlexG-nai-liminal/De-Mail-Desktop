@@ -6,12 +6,26 @@ from .filenames import slug
 
 ROOT_FOLDER_NAME = "de-Mail Archive"
 MESSAGES_FOLDER_NAME = "messages"
+INVALID_WINDOWS_COMPONENT_CHARACTERS = frozenset('<>:"/\\|?*')
 
 
 @dataclass(frozen=True, slots=True)
 class ArchiveFolders:
     operation: Path
     messages: Path
+
+
+def require_safe_archive_component(value: str, *, suffix: str | None = None) -> str:
+    if (
+        not value
+        or value in {".", ".."}
+        or value[-1] in {" ", "."}
+        or any(character in INVALID_WINDOWS_COMPONENT_CHARACTERS for character in value)
+        or any(ord(character) < 32 for character in value)
+        or (suffix is not None and not value.casefold().endswith(suffix.casefold()))
+    ):
+        raise ValueError("Archive state contains an unsafe path component.")
+    return value
 
 
 def create_archive_folders(

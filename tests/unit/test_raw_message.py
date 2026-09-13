@@ -76,3 +76,9 @@ def test_missing_or_nonnumeric_optional_metadata_is_safe() -> None:
     assert envelope.size_estimate is None
     assert not envelope.raw_present
 
+
+def test_duplicate_identity_field_is_rejected() -> None:
+    with pytest.raises(GmailResponseError, match="duplicate id field"):
+        read_raw_message(
+            io.StringIO('{"id":"first","id":"second","raw":"YQ"}'), io.BytesIO()
+        )

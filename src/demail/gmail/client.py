@@ -23,9 +23,16 @@ class AccessTokenProvider(Protocol):
 
 
 class GmailApiError(RuntimeError):
-    def __init__(self, message: str, status_code: int | None = None) -> None:
+    def __init__(
+        self,
+        message: str,
+        status_code: int | None = None,
+        *,
+        connection_failure: bool = False,
+    ) -> None:
         super().__init__(message)
         self.status_code = status_code
+        self.connection_failure = connection_failure
 
 
 @dataclass(frozen=True, slots=True)
@@ -248,6 +255,31 @@ class GmailClient:
         except (TypeError, ValueError) as error:
             raise GmailApiError("Gmail returned malformed message metadata.") from error
 
+    def recent_messages(
+        self, criteria: SelectionCriteria, limit: int = 100
+    ) -> tuple[GmailMessageMetadata, ...]:
+        if criteria.is_manual_selection:
+            raise ValueError("Manual criteria cannot be used to discover candidates.")
+        if not 1 <= limit <= 500:
+            raise ValueError("Candidate limit must be from 1 to 500.")
+        query = build_query(criteria)
+        params: list[tuple[str, str | int | bool]] = [("maxResults", limit)]
+        if query.q:
+            params.append(("q", query.q))
+        params.extend(("labelIds", label_id) for label_id in query.label_ids)
+        if query.include_spam_trash:
+            params.append(("includeSpamTrash", True))
+        document = self._json_get("/users/me/messages", params=params)
+        rows = document.get("messages", [])
+        if not isinstance(rows, list):
+            raise GmailApiError("Gmail returned a malformed candidate list.")
+        output: list[GmailMessageMetadata] = []
+        for row in rows:
+            if not isinstance(row, dict):
+                raise GmailApiError("Gmail returned a malformed candidate list.")
+            output.append(self.metadata(self._required_string(row, "id")))
+        return tuple(output)
+
     def _list_page(self, query: GmailListQuery, page_token: str | None) -> dict[str, object]:
         params: list[tuple[str, str | int | bool]] = [("maxResults", 500)]
         if query.q:
@@ -287,7 +319,9 @@ class GmailClient:
                 )
             except httpx.RequestError as error:
                 if attempt + 1 == self.max_attempts:
-                    raise GmailApiError("Gmail could not be reached.") from error
+                    raise GmailApiError(
+                        "Gmail could not be reached.", connection_failure=True
+                    ) from error
                 self.sleeper(2**attempt)
                 continue
             if response.status_code < 400:
@@ -311,7 +345,9 @@ class GmailClient:
                         try:
                             yield response
                         except httpx.RequestError as error:
-                            raise GmailApiError("The Gmail download was interrupted.") from error
+                            raise GmailApiError(
+                                "The Gmail download was interrupted.", connection_failure=True
+                            ) from error
                         return
                     if (
                         response.status_code not in self.TRANSIENT_STATUS
@@ -322,7 +358,9 @@ class GmailClient:
                 raise
             except httpx.RequestError as error:
                 if attempt + 1 == self.max_attempts:
-                    raise GmailApiError("Gmail could not be reached.") from error
+                    raise GmailApiError(
+                        "Gmail could not be reached.", connection_failure=True
+                    ) from error
             self.sleeper(2**attempt)
         raise AssertionError("unreachable")
 
@@ -332,7 +370,11 @@ class GmailClient:
             raise GmailApiError("Google authorization was rejected.", status_code)
         if status_code == 404:
             raise GmailApiError("The Gmail message was not found.", status_code)
-        raise GmailApiError("Gmail returned an error.", status_code)
+        raise GmailApiError(
+            "Gmail returned an error.",
+            status_code,
+            connection_failure=status_code in GmailClient.TRANSIENT_STATUS,
+        )
 
     @staticmethod
     def _required_string(document: dict[str, object], key: str) -> str:

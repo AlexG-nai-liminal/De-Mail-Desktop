@@ -1,6 +1,7 @@
 import base64
 import hashlib
 import io
+import os
 from pathlib import Path
 
 import pytest
@@ -65,3 +66,46 @@ def test_exception_inside_atomic_writer_never_promotes(tmp_path: Path) -> None:
         raise OSError("simulated disk failure")
     assert not final.exists()
     assert not final.with_name("abc.eml.partial").exists()
+
+
+def test_failed_atomic_promotion_cleans_partial_and_preserves_existing_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    final = tmp_path / "abc.eml"
+    final.write_bytes(b"previous verified bytes")
+
+    def fail_replace(source: Path, destination: Path) -> None:
+        raise PermissionError("simulated antivirus lock")
+
+    monkeypatch.setattr(os, "replace", fail_replace)
+    with pytest.raises(PermissionError, match="antivirus"), AtomicArchiveFile(
+        final
+    ) as target:
+        target.write(b"new bytes")
+    assert final.read_bytes() == b"previous verified bytes"
+    assert not final.with_name("abc.eml.partial").exists()
+
+
+def test_failed_flush_closes_handle_and_removes_partial(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    final = tmp_path / "abc.eml"
+    final.write_bytes(b"previous verified bytes")
+
+    def fail_sync(file_descriptor: int) -> None:
+        raise OSError("simulated disk-full flush")
+
+    monkeypatch.setattr(os, "fsync", fail_sync)
+    with pytest.raises(OSError, match="disk-full"), AtomicArchiveFile(final) as target:
+        target.write(b"new bytes")
+    assert final.read_bytes() == b"previous verified bytes"
+    assert not final.with_name("abc.eml.partial").exists()
+
+
+def test_missing_response_identity_is_never_published(tmp_path: Path) -> None:
+    final = tmp_path / "abc.eml"
+    with pytest.raises(ValueError, match="different message identity"):
+        archive_raw_response(
+            io.StringIO('{"raw":"Y29udGVudA"}'), final, expected_message_id="abc"
+        )
+    assert not final.exists()

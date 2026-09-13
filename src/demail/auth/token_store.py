@@ -6,6 +6,9 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Protocol
 
+MAX_PLAINTEXT_CREDENTIAL_BYTES = 64 * 1024
+MAX_PROTECTED_CREDENTIAL_BYTES = 1024 * 1024
+
 
 class Protector(Protocol):
     def protect(self, plaintext: bytes) -> bytes: ...
@@ -38,7 +41,11 @@ class CredentialStore:
         document = asdict(credentials)
         document["scopes"] = list(credentials.scopes)
         plaintext = json.dumps(document, separators=(",", ":")).encode("utf-8")
+        if len(plaintext) > MAX_PLAINTEXT_CREDENTIAL_BYTES:
+            raise ValueError("Google authorization data is unexpectedly large.")
         protected = self.protector.protect(plaintext)
+        if len(protected) > MAX_PROTECTED_CREDENTIAL_BYTES:
+            raise ValueError("Protected Google authorization data is unexpectedly large.")
         self.path.parent.mkdir(parents=True, exist_ok=True)
         try:
             with self.partial_path.open("wb") as stream:
@@ -54,7 +61,13 @@ class CredentialStore:
         if not self.path.exists():
             return None
         try:
-            plaintext = self.protector.unprotect(self.path.read_bytes())
+            with self.path.open("rb") as stream:
+                protected = stream.read(MAX_PROTECTED_CREDENTIAL_BYTES + 1)
+            if len(protected) > MAX_PROTECTED_CREDENTIAL_BYTES:
+                raise ValueError("Saved Google authorization is unexpectedly large.")
+            plaintext = self.protector.unprotect(protected)
+            if len(plaintext) > MAX_PLAINTEXT_CREDENTIAL_BYTES:
+                raise ValueError("Saved Google authorization is unexpectedly large.")
             document = json.loads(plaintext.decode("utf-8"))
             return StoredCredentials(
                 token=document.get("token"),
@@ -71,4 +84,3 @@ class CredentialStore:
     def clear(self) -> None:
         self.path.unlink(missing_ok=True)
         self.partial_path.unlink(missing_ok=True)
-

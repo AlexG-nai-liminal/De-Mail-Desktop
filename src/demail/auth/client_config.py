@@ -3,6 +3,14 @@
 import json
 from dataclasses import dataclass
 from pathlib import Path
+from urllib.parse import urlparse
+
+MAX_CLIENT_FILE_BYTES = 1024 * 1024
+GOOGLE_AUTH_URIS = {
+    "https://accounts.google.com/o/oauth2/auth",
+    "https://accounts.google.com/o/oauth2/v2/auth",
+}
+GOOGLE_TOKEN_URI = "https://oauth2.googleapis.com/token"
 
 
 class OAuthClientConfigError(ValueError):
@@ -24,7 +32,13 @@ class DesktopOAuthClient:
 
 def load_desktop_client(path: Path) -> DesktopOAuthClient:
     try:
-        document = json.loads(path.read_text(encoding="utf-8"))
+        with path.open("rb") as stream:
+            payload = stream.read(MAX_CLIENT_FILE_BYTES + 1)
+        if len(payload) > MAX_CLIENT_FILE_BYTES:
+            raise OAuthClientConfigError("The Google OAuth client file is unexpectedly large.")
+        document = json.loads(payload.decode("utf-8"))
+    except OAuthClientConfigError:
+        raise
     except (OSError, UnicodeError, json.JSONDecodeError) as error:
         raise OAuthClientConfigError("The Google OAuth client file could not be read.") from error
     if not isinstance(document, dict) or "installed" not in document:
@@ -46,10 +60,14 @@ def load_desktop_client(path: Path) -> DesktopOAuthClient:
     )
     if missing:
         raise OAuthClientConfigError("The Desktop OAuth client is missing required fields.")
+    if installed["auth_uri"] not in GOOGLE_AUTH_URIS or installed["token_uri"] != GOOGLE_TOKEN_URI:
+        raise OAuthClientConfigError(
+            "The Desktop OAuth client does not use the official Google authorization endpoints."
+        )
     redirects = installed.get("redirect_uris", [])
     if not isinstance(redirects, list) or not all(isinstance(uri, str) for uri in redirects):
         raise OAuthClientConfigError("The Desktop OAuth redirect list is malformed.")
-    if not any(uri.startswith("http://localhost") for uri in redirects):
+    if not any(_is_localhost_redirect(uri) for uri in redirects):
         raise OAuthClientConfigError(
             "The Desktop OAuth client does not allow a localhost callback."
         )
@@ -60,6 +78,23 @@ def load_desktop_client(path: Path) -> DesktopOAuthClient:
         token_uri=installed["token_uri"],
         redirect_uris=tuple(redirects),
     )
+
+
+def _is_localhost_redirect(value: str) -> bool:
+    try:
+        parsed = urlparse(value)
+        return (
+            parsed.scheme == "http"
+            and parsed.netloc == "localhost"
+            and parsed.hostname == "localhost"
+            and parsed.username is None
+            and parsed.password is None
+            and parsed.path in {"", "/"}
+            and parsed.query == ""
+            and parsed.fragment == ""
+        )
+    except ValueError:
+        return False
 
 
 def require_same_project(desktop: DesktopOAuthClient, existing_client_id: str) -> None:

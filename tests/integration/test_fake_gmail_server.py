@@ -1,6 +1,7 @@
 import base64
 import json
 import threading
+from datetime import UTC, datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
@@ -9,6 +10,9 @@ import pytest
 
 from demail.domain.selection import SelectionCriteria
 from demail.gmail.client import GmailApiError, GmailClient
+from demail.jobs.archive_operation import ArchiveOperationEngine
+from demail.persistence.archive_repository import ArchiveRepository
+from demail.persistence.database import Database
 
 
 class Token:
@@ -56,7 +60,23 @@ def fake_gmail_server():
                 self.connection.close()
             elif "/messages/" in parsed.path:
                 message_id = parsed.path.rsplit("/", 1)[1]
-                self.send_json({"id": message_id, "raw": raw})
+                if query.get("format") == ["metadata"]:
+                    self.send_json(
+                        {
+                            "id": message_id,
+                            "threadId": f"thread-{message_id}",
+                            "internalDate": "1788966000000",
+                            "labelIds": ["INBOX"],
+                            "payload": {
+                                "headers": [
+                                    {"name": "Subject", "value": "Archive me"},
+                                    {"name": "From", "value": "sender@example.com"},
+                                ]
+                            },
+                        }
+                    )
+                else:
+                    self.send_json({"id": message_id, "raw": raw})
             else:
                 self.send_error(404)
 
@@ -115,3 +135,44 @@ def test_interrupted_http_body_never_publishes_final_file(
     assert not final.exists()
     assert not final.with_name("interrupted.eml.partial").exists()
 
+
+def test_full_http_archive_operation_publishes_verified_android_manifest(
+    fake_gmail_server, tmp_path: Path
+) -> None:
+    server, requests, message = fake_gmail_server
+    gmail = GmailClient(
+        Token(),
+        base_url=f"http://127.0.0.1:{server.server_port}/gmail/v1",
+        sleeper=lambda _: None,
+    )
+    database = Database(tmp_path / "state.db")
+    database.migrate()
+    repository = ArchiveRepository(database)
+    engine = ArchiveOperationEngine(gmail, repository)
+    destination = tmp_path / "acceptance-destination"
+    operation_id = engine.prepare(
+        SelectionCriteria(search_query="has:attachment"),
+        destination,
+        now=datetime(2026, 9, 13, 9, 0, tzinfo=UTC),
+    )
+    engine.run(operation_id)
+
+    operation = repository.operation(operation_id)
+    assert operation is not None
+    assert operation["status"] == "VERIFIED"
+    assert operation["selected_count"] == 3
+    folder = destination / "de-Mail Archive" / operation["archive_folder_name"]
+    eml_files = sorted((folder / "messages").glob("*.eml"))
+    assert len(eml_files) == 3
+    assert all(path.read_bytes() == message for path in eml_files)
+    manifest = json.loads((folder / "manifest.json").read_text(encoding="utf-8"))
+    assert manifest["verification"]["status"] == "VERIFIED"
+    assert manifest["archive"]["counts"] == {
+        "selected": 3,
+        "exported": 3,
+        "failed": 0,
+        "verified": 3,
+    }
+    assert {item["gmailMessageId"] for item in manifest["messages"]} == {"a", "b", "c"}
+    assert not list(folder.rglob("*.partial"))
+    assert all(authorization == "Bearer test-token" for _, _, authorization in requests)

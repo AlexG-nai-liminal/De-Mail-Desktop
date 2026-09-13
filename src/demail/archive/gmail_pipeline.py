@@ -23,11 +23,7 @@ def archive_raw_response(
         envelope = read_raw_message(source, target)
         if not envelope.raw_present:
             raise ValueError("Gmail response did not contain a raw message body")
-        if (
-            expected_message_id is not None
-            and envelope.id is not None
-            and envelope.id != expected_message_id
-        ):
+        if expected_message_id is not None and envelope.id != expected_message_id:
             raise ValueError("Gmail returned a different message identity than requested")
         archived_file = target.finish()
     return ArchivedRawMessage(envelope=envelope, file=archived_file)

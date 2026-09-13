@@ -189,6 +189,7 @@ def _integer(value: str | None) -> int | None:
 def read_raw_message(source: TextIO, raw_target: BinaryIO) -> RawMessageEnvelope:
     lexer = _Chars(source)
     values: dict[str, object] = {"labelIds": (), "raw": False}
+    seen_fields: set[str] = set()
     lexer.whitespace()
     lexer.expect("{")
     lexer.whitespace()
@@ -198,12 +199,13 @@ def read_raw_message(source: TextIO, raw_target: BinaryIO) -> RawMessageEnvelope
         while True:
             lexer.whitespace()
             key = lexer.string()
+            if key in seen_fields:
+                raise GmailResponseError(f"Malformed Gmail response: duplicate {key} field")
+            seen_fields.add(key)
             lexer.whitespace()
             lexer.expect(":")
             lexer.whitespace()
             if key == "raw":
-                if values["raw"]:
-                    raise GmailResponseError("Malformed Gmail response: duplicate raw field")
                 values["raw"] = True
                 lexer.stream_raw_string(raw_target)
             elif key == "labelIds":

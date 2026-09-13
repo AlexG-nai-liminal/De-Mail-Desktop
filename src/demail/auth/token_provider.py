@@ -9,6 +9,10 @@ from .oauth import ARCHIVE_SCOPES
 from .token_store import CredentialStore, StoredCredentials
 
 
+class GoogleAuthorizationError(PermissionError):
+    pass
+
+
 class GoogleTokenProvider:
     def __init__(self, store: CredentialStore) -> None:
         self.store = store
@@ -16,20 +20,24 @@ class GoogleTokenProvider:
     def access_token(self) -> str:
         stored = self.store.load()
         if stored is None:
-            raise PermissionError("Google authorization is not connected.")
+            raise GoogleAuthorizationError("Google authorization is not connected.")
         if set(stored.scopes) != set(ARCHIVE_SCOPES):
-            raise PermissionError("Saved Google authorization does not have the required scope.")
+            raise GoogleAuthorizationError(
+                "Saved Google authorization does not have the required scope."
+            )
         credentials = self._credentials(stored)
         if not credentials.valid:
             if not credentials.refresh_token:
-                raise PermissionError("Google authorization cannot be refreshed.")
+                raise GoogleAuthorizationError("Google authorization cannot be refreshed.")
             try:
                 credentials.refresh(Request())
             except Exception as error:
-                raise PermissionError("Google authorization has expired or was revoked.") from error
+                raise GoogleAuthorizationError(
+                    "Google authorization has expired or was revoked."
+                ) from error
             self.store.save(self._stored(credentials))
         if not credentials.token:
-            raise PermissionError("Google did not provide an access token.")
+            raise GoogleAuthorizationError("Google did not provide an access token.")
         return credentials.token
 
     @staticmethod
@@ -50,7 +58,7 @@ class GoogleTokenProvider:
     @staticmethod
     def _stored(credentials: Credentials) -> StoredCredentials:
         if not credentials.refresh_token:
-            raise PermissionError("Google did not provide a refresh credential.")
+            raise GoogleAuthorizationError("Google did not provide a refresh credential.")
         return StoredCredentials(
             token=credentials.token,
             refresh_token=credentials.refresh_token,
