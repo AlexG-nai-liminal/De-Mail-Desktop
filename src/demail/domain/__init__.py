@@ -1,4 +1,4 @@
-from .eras import Era, EraKind, EraSplit, PeriodCount, split_eras
+from .eras import Era, EraKind, EraSplit, PeriodCount, combine_eras, split_eras
 from .models import (
     ArchiveHistoryItem,
     ArchiveMessage,
@@ -19,5 +19,6 @@ __all__ = [
     "OperationStatus",
     "PeriodCount",
     "SelectionCriteria",
+    "combine_eras",
     "split_eras",
 ]

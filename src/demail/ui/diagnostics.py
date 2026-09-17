@@ -25,6 +25,7 @@ from .components import Card, page_heading
 class ProblemReportPage(QWidget):
     build_requested = Signal(str, str)
     save_requested = Signal(str)
+    send_requested = Signal(str)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -43,7 +44,7 @@ class ProblemReportPage(QWidget):
         card = Card()
         privacy = QLabel(
             "Describe the problem, build the report, and read every character. "
-            "You decide whether to copy or save it."
+            "You decide whether to copy, save, or open it in your email app."
         )
         privacy.setObjectName("muted")
         privacy.setWordWrap(True)
@@ -79,8 +80,17 @@ class ProblemReportPage(QWidget):
         self.save_button.clicked.connect(
             lambda: self.save_requested.emit(self.preview.toPlainText())
         )
+        self.send_button = QPushButton("Send report to")
+        self.send_button.setToolTip("Open an email draft to alex@liminalmemory.com")
+        self.send_button.setAccessibleName(
+            "Send report to alex@liminalmemory.com in your email application"
+        )
+        self.send_button.clicked.connect(
+            lambda: self.send_requested.emit(self.preview.toPlainText())
+        )
         actions.addWidget(self.copy_button)
         actions.addWidget(self.save_button)
+        actions.addWidget(self.send_button)
         actions.addStretch()
         card.layout.addLayout(actions)
         self.delivery_status = QLabel("")
@@ -113,7 +123,7 @@ class ProblemReportPage(QWidget):
         self.preview.setPlainText(text)
         self.build_button.setEnabled(True)
         self.build_button.setText("Rebuild privacy-safe report")
-        self.delivery_status.setText("Review the report before copying or saving it.")
+        self.delivery_status.setText("Review the report before copying, saving, or emailing it.")
         self._set_delivery_enabled(bool(text))
 
     def set_error(self, message: str) -> None:
@@ -133,9 +143,18 @@ class ProblemReportPage(QWidget):
         del path
         self.delivery_status.setText("Report saved to the folder you selected.")
 
+    def set_email_opened(self, recipient: str) -> None:
+        self.delivery_status.setText(
+            f"Email draft opened for {recipient}. Review it before sending."
+        )
+
+    def set_delivery_error(self, message: str) -> None:
+        self.delivery_status.setText(message)
+
     def _set_delivery_enabled(self, enabled: bool) -> None:
         self.copy_button.setEnabled(enabled)
         self.save_button.setEnabled(enabled)
+        self.send_button.setEnabled(enabled)
 
 
 class _DiagnosticSignals(QObject):

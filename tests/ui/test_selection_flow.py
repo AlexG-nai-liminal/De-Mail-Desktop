@@ -2,7 +2,7 @@ from datetime import date
 from pathlib import Path
 
 import pytest
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QAbstractAnimation, Qt
 
 from demail.domain.eras import Era, EraKind
 from demail.gmail.client import GmailLabel, GmailMessageMetadata
@@ -78,8 +78,7 @@ def test_quick_archive_click_calculates_then_selects_requested_third(qtbot) -> N
     assert request.args == [True]
     assert not any(button.isEnabled() for button in flow.quick_archive_buttons)
     flow.set_eras(mailbox_thirds())
-    assert flow.selection_mode.currentText() == "Mailbox era"
-    assert flow.era_combo.currentIndex() == 1
+    assert flow.selection_mode.currentText() == "Quick archive thirds"
     assert flow.quick_archive_buttons[1].isChecked()
     assert flow.selection_criteria().start_date == "2012-01-01"
     assert flow.selection_criteria().end_date == "2020-12-31"
@@ -95,10 +94,47 @@ def test_loaded_quick_archive_third_switches_from_detailed_selection(qtbot) -> N
 
     flow.quick_archive_buttons[2].click()
 
-    assert flow.selection_mode.currentText() == "Mailbox era"
-    assert flow.era_combo.currentIndex() == 2
+    assert flow.selection_mode.currentText() == "Quick archive thirds"
     assert flow.selection_criteria().start_date == "2021-01-01"
     assert flow.selection_criteria().end_date is None
+
+
+def test_quick_archive_allows_two_nonadjacent_thirds(qtbot) -> None:
+    flow = ArchiveWorkflow()
+    qtbot.addWidget(flow)
+    flow.set_eras(mailbox_thirds())
+
+    flow.quick_archive_buttons[0].click()
+    flow.quick_archive_buttons[2].click()
+
+    criteria = flow.selection_criteria()
+    assert [button.isChecked() for button in flow.quick_archive_buttons] == [True, False, True]
+    assert criteria.start_date is None
+    assert criteria.end_date is None
+    assert criteria.date_ranges == ((None, "2011-12-31"), ("2021-01-01", None))
+
+
+def test_quick_archive_allows_all_three_thirds_as_whole_mailbox(qtbot) -> None:
+    flow = ArchiveWorkflow()
+    qtbot.addWidget(flow)
+    flow.set_eras(mailbox_thirds())
+    for button in flow.quick_archive_buttons:
+        button.click()
+
+    criteria = flow.selection_criteria()
+    assert all(button.isChecked() for button in flow.quick_archive_buttons)
+    assert criteria.is_whole_mailbox
+
+
+def test_quick_archive_requires_one_checked_third(qtbot) -> None:
+    flow = ArchiveWorkflow()
+    qtbot.addWidget(flow)
+    flow.set_eras(mailbox_thirds())
+    flow.quick_archive_buttons[0].click()
+    flow.quick_archive_buttons[0].click()
+
+    with pytest.raises(ValueError, match="at least one"):
+        flow.selection_criteria()
 
 
 def test_mailbox_that_cannot_form_thirds_fails_safely(qtbot) -> None:
@@ -230,9 +266,53 @@ def test_archive_progress_and_verified_report(qtbot, tmp_path: Path) -> None:
     assert flow.current_step == 5
     result = ArchiveRunResult(7, "VERIFIED", 2, 2, 2, 0, 1536, tmp_path)
     flow.set_archive_complete(result)
+    assert flow.current_step == 5
+    assert flow.next_button.isEnabled()
+    assert flow.next_button_fade.state() == QAbstractAnimation.State.Running
+    assert flow.next_button_effect.opacity() < 1.0
+    assert flow.verify_label.text() == "Verification complete. Continue to the archive report."
+    qtbot.waitUntil(lambda: flow.next_button_effect.opacity() == 1.0, timeout=1_000)
+    flow.next_button.click()
     assert flow.current_step == 6
     assert flow.report_title.text() == "Archive verified"
     assert "1.5 KB" in flow.report_detail.text()
+    assert flow.next_button.text() == "Archive more"
+
+
+def test_archive_more_returns_to_connected_start_and_clears_previous_run(
+    qtbot, tmp_path: Path
+) -> None:
+    flow = ArchiveWorkflow()
+    qtbot.addWidget(flow)
+    flow.set_connected("archive@example.com", "3,000 messages")
+    flow.set_eras(mailbox_thirds())
+    flow.quick_archive_buttons[0].click()
+    flow.set_exact_count(1_001)
+    flow.set_destination(str(tmp_path))
+    flow.set_archive_started()
+    flow.set_archive_complete(
+        ArchiveRunResult(1, "VERIFIED", 1_001, 1_001, 1_001, 0, 1024, tmp_path)
+    )
+    flow.next_button.click()
+    assert flow.current_step == 6
+
+    flow.next_button.click()
+
+    assert flow.current_step == 0
+    assert flow.next_button.text() == "Continue"
+    assert flow.next_button.isEnabled()
+    assert flow.count_label.text() == "Count not calculated"
+    assert not flow.destination_input.text()
+    assert not any(button.isChecked() for button in flow.quick_archive_buttons)
+    assert flow.selection_mode.currentText() == "Quick archive thirds"
+
+
+def test_running_archive_cannot_be_reset(qtbot) -> None:
+    flow = ArchiveWorkflow()
+    qtbot.addWidget(flow)
+    flow.set_archive_started()
+    with pytest.raises(RuntimeError, match="progress"):
+        flow.reset_for_another_archive()
 
 
 def test_archive_failure_message_does_not_expose_exception_details(qtbot) -> None:
@@ -242,3 +322,13 @@ def test_archive_failure_message_does_not_expose_exception_details(qtbot) -> Non
     flow.set_archive_error("The archive stopped safely. Completed files remain available.")
     assert flow.current_step == 6
     assert flow.report_title.text() == "Archive stopped safely"
+
+
+def test_continue_is_visibly_disabled_while_archive_is_running(qtbot) -> None:
+    flow = ArchiveWorkflow()
+    qtbot.addWidget(flow)
+    flow.set_archive_started()
+
+    assert flow.current_step == 4
+    assert not flow.next_button.isEnabled()
+    assert flow.next_button.property("primary") is True

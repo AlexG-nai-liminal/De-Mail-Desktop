@@ -136,6 +136,23 @@ def test_interrupted_http_body_never_publishes_final_file(
     assert not final.with_name("interrupted.eml.partial").exists()
 
 
+def test_disjoint_mailbox_thirds_reach_gmail_as_one_or_query(fake_gmail_server) -> None:
+    server, requests, _ = fake_gmail_server
+    gmail = GmailClient(
+        Token(),
+        base_url=f"http://127.0.0.1:{server.server_port}/gmail/v1",
+        sleeper=lambda _: None,
+    )
+    selection = gmail.resolve_selection(
+        SelectionCriteria(date_ranges=((None, "2011-12-31"), ("2021-01-01", None)))
+    )
+    assert selection.exact_count == 3
+    message_requests = [query for path, query, _ in requests if path.endswith("/messages")]
+    assert message_requests[0]["q"] == [
+        "((before:2012/01/01) OR (after:2021/01/01))"
+    ]
+
+
 def test_full_http_archive_operation_publishes_verified_android_manifest(
     fake_gmail_server, tmp_path: Path
 ) -> None:

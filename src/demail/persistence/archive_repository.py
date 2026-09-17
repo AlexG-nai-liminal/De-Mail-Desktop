@@ -37,6 +37,10 @@ class ArchiveRepository:
                 {
                     "startDate": criteria.start_date,
                     "endDate": criteria.end_date,
+                    "dateRanges": [
+                        {"startDate": start, "endDate": end}
+                        for start, end in criteria.date_ranges
+                    ],
                     "labelId": criteria.label_id,
                     "labelName": criteria.label_name,
                     "sender": criteria.sender,

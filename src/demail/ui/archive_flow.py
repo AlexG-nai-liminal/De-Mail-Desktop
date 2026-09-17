@@ -1,12 +1,13 @@
 from pathlib import Path
 
-from PySide6.QtCore import QDate, Qt, Signal
+from PySide6.QtCore import QDate, QEasingCurve, QPropertyAnimation, Qt, Signal
 from PySide6.QtWidgets import (
     QButtonGroup,
     QCheckBox,
     QComboBox,
     QDateEdit,
     QFormLayout,
+    QGraphicsOpacityEffect,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -19,7 +20,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from demail.domain.eras import Era
+from demail.domain.eras import Era, combine_eras
 from demail.domain.selection import SelectionCriteria
 from demail.gmail.client import GmailLabel, GmailMessageMetadata
 from demail.jobs.archive_operation import ArchiveProgress
@@ -109,6 +110,14 @@ class ArchiveWorkflow(QWidget):
         self.next_button = QPushButton("Continue")
         self.next_button.setProperty("primary", True)
         self.next_button.clicked.connect(self.go_forward)
+        self.next_button_effect = QGraphicsOpacityEffect(self.next_button)
+        self.next_button_effect.setOpacity(1.0)
+        self.next_button.setGraphicsEffect(self.next_button_effect)
+        self.next_button_fade = QPropertyAnimation(
+            self.next_button_effect, b"opacity", self
+        )
+        self.next_button_fade.setDuration(550)
+        self.next_button_fade.setEasingCurve(QEasingCurve.Type.OutCubic)
         actions.addWidget(self.back_button)
         actions.addStretch()
         actions.addWidget(self.next_button)
@@ -154,7 +163,7 @@ class ArchiveWorkflow(QWidget):
         quick_title = QLabel("Quick archive")
         quick_title.setStyleSheet("font-size: 15px; font-weight: 650;")
         quick_detail = QLabel(
-            "Choose one balanced third of your mailbox, then continue to review and archive it."
+            "Choose one, two, or all three balanced mailbox thirds, then continue to review."
         )
         quick_detail.setObjectName("muted")
         quick_detail.setWordWrap(True)
@@ -164,7 +173,7 @@ class ArchiveWorkflow(QWidget):
         quick_layout.setContentsMargins(0, 0, 0, 0)
         quick_layout.setSpacing(0)
         self.quick_archive_group = QButtonGroup(self)
-        self.quick_archive_group.setExclusive(True)
+        self.quick_archive_group.setExclusive(False)
         self.quick_archive_buttons: list[QPushButton] = []
         for index, label in enumerate(QUICK_ARCHIVE_LABELS):
             button = QPushButton(f"{label}\n33.33%")
@@ -195,6 +204,7 @@ class ArchiveWorkflow(QWidget):
         self.selection_mode.addItems(
             [
                 "Mailbox era",
+                "Quick archive thirds",
                 "Date range",
                 "Gmail label",
                 "Sender",
@@ -413,7 +423,13 @@ class ArchiveWorkflow(QWidget):
             f"Size: {self._format_bytes(result.total_bytes)}\n"
             f"Saved to: {result.archive_path}"
         )
-        self.set_step(6)
+        self.verify_progress.setRange(0, max(result.selected_count, 1))
+        self.verify_progress.setValue(result.verified_count)
+        self.verify_label.setText("Verification complete. Continue to the archive report.")
+        if self.current_step != 5:
+            self.set_step(5)
+        else:
+            self._update_actions()
 
     def set_archive_error(self, message: str) -> None:
         self._archive_running = False
@@ -466,7 +482,7 @@ class ArchiveWorkflow(QWidget):
         pending = self._pending_quick_archive_index
         self._pending_quick_archive_index = None
         if has_thirds and pending is not None:
-            self._activate_quick_archive(pending)
+            self._activate_quick_archive(pending, ensure_checked=True)
         else:
             self._sync_quick_archive_selection()
 
@@ -482,6 +498,8 @@ class ArchiveWorkflow(QWidget):
         self._era_scan_complete = False
         self._era_scan_running = False
         self._pending_quick_archive_index = None
+        for button in self.quick_archive_buttons:
+            button.setChecked(False)
         self.scan_eras_button.setText("Try mailbox eras again")
         self.scan_eras_button.setEnabled(True)
         for index, button in enumerate(self.quick_archive_buttons):
@@ -512,6 +530,17 @@ class ArchiveWorkflow(QWidget):
             if not isinstance(era, Era):
                 raise ValueError("Calculate and choose a mailbox era first.")
             return self._validated(era.criteria(self.include_spam.isChecked()))
+        if mode == "Quick archive thirds":
+            selected = tuple(
+                self.era_combo.itemData(index)
+                for index, button in enumerate(self.quick_archive_buttons)
+                if button.isChecked()
+            )
+            if not selected or not all(isinstance(era, Era) for era in selected):
+                raise ValueError("Choose at least one mailbox third first.")
+            return self._validated(
+                combine_eras(selected, include_spam_and_trash=self.include_spam.isChecked())
+            )
         if mode == "Date range":
             return self._validated(
                 SelectionCriteria(
@@ -617,7 +646,7 @@ class ArchiveWorkflow(QWidget):
             return
         self._activate_quick_archive(index)
 
-    def _activate_quick_archive(self, index: int) -> None:
+    def _activate_quick_archive(self, index: int, *, ensure_checked: bool = False) -> None:
         era = self.era_combo.itemData(index)
         if not isinstance(era, Era):
             self.selection_error.setText(
@@ -625,21 +654,17 @@ class ArchiveWorkflow(QWidget):
             )
             self._sync_quick_archive_selection()
             return
-        self.selection_mode.setCurrentText("Mailbox era")
-        self.era_combo.setCurrentIndex(index)
+        self.selection_mode.setCurrentText("Quick archive thirds")
+        if ensure_checked:
+            self.quick_archive_buttons[index].setChecked(True)
         self.selection_error.clear()
-        self._sync_quick_archive_selection()
+        self._invalidate_exact_count()
 
     def _sync_quick_archive_selection(self) -> None:
-        selected = (
-            self.era_combo.currentIndex()
-            if self.selection_mode.currentText() == "Mailbox era"
-            else -1
-        )
-        self.quick_archive_group.setExclusive(False)
-        for index, button in enumerate(self.quick_archive_buttons):
-            button.setChecked(index == selected and self._era_scan_complete)
-        self.quick_archive_group.setExclusive(True)
+        if self.selection_mode.currentText() == "Quick archive thirds":
+            return
+        for button in self.quick_archive_buttons:
+            button.setChecked(False)
 
     def _invalidate_exact_count(self) -> None:
         if self._exact_count is None and not self._counting:
@@ -681,7 +706,12 @@ class ArchiveWorkflow(QWidget):
         self.step_changed.emit(index)
 
     def go_forward(self) -> None:
-        if self.next_button.isEnabled() and self.current_step < self.pages.count() - 1:
+        if not self.next_button.isEnabled():
+            return
+        if self.current_step == self.pages.count() - 1:
+            self.reset_for_another_archive()
+            return
+        if self.current_step < self.pages.count() - 1:
             if self.current_step == 1:
                 try:
                     self.selection_criteria()
@@ -697,12 +727,38 @@ class ArchiveWorkflow(QWidget):
                 return
             self.set_step(self.current_step + 1)
 
+    def reset_for_another_archive(self) -> None:
+        if self._archive_running:
+            raise RuntimeError("An archive in progress cannot be reset.")
+        self._exact_count = None
+        self._counting = False
+        self.selection_error.clear()
+        self.count_label.setText("Count not calculated")
+        self.count_button.setEnabled(True)
+        self.destination_input.clear()
+        self.destination_error.clear()
+        self.archive_progress.setRange(0, 100)
+        self.archive_progress.setValue(0)
+        self.progress_label.setText("0 of 0 messages copied")
+        self.verify_progress.setRange(0, 100)
+        self.verify_progress.setValue(0)
+        self.verify_label.setText("Waiting for archive export")
+        self.report_title.setText("Archive not started")
+        self.report_detail.setText("No result is available yet.")
+        if self._era_scan_complete and self.era_combo.count() == len(self.quick_archive_buttons):
+            self.selection_mode.setCurrentText("Quick archive thirds")
+            for button in self.quick_archive_buttons:
+                button.setChecked(False)
+        self.set_step(0)
+
     def go_back(self) -> None:
         if self.current_step > 0:
             self.set_step(self.current_step - 1)
 
     def _update_actions(self) -> None:
         index = self.current_step
+        final_step = index == self.pages.count() - 1
+        self.next_button.setText("Archive more" if final_step else "Continue")
         self.back_button.setEnabled(index > 0 and not self._archive_running)
         can_continue = not (index == 0 and not self._connected)
         if index == 2 and self._exact_count is None:
@@ -711,4 +767,15 @@ class ArchiveWorkflow(QWidget):
             can_continue = False
         if self._archive_running:
             can_continue = False
-        self.next_button.setEnabled(can_continue and index < self.pages.count() - 1)
+        enable_continue = can_continue
+        was_enabled = self.next_button.isEnabled()
+        self.next_button.setEnabled(enable_continue)
+        if enable_continue and not was_enabled:
+            self._fade_in_continue()
+
+    def _fade_in_continue(self) -> None:
+        self.next_button_fade.stop()
+        self.next_button_effect.setOpacity(0.45)
+        self.next_button_fade.setStartValue(0.45)
+        self.next_button_fade.setEndValue(1.0)
+        self.next_button_fade.start()

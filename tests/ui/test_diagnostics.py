@@ -34,6 +34,7 @@ def test_problem_report_is_inspectable_before_copy_or_save(qtbot) -> None:
     page = ProblemReportPage()
     qtbot.addWidget(page)
     assert not page.copy_button.isEnabled()
+    assert not page.send_button.isEnabled()
     page.what_happened.setPlainText("It stopped")
     with qtbot.waitSignal(page.build_requested) as request:
         page.build_button.click()
@@ -41,8 +42,29 @@ def test_problem_report_is_inspectable_before_copy_or_save(qtbot) -> None:
     page.set_report("complete report")
     assert page.preview.toPlainText() == "complete report"
     assert page.copy_button.isEnabled()
+    assert page.send_button.isEnabled()
     page.copy_report()
     assert "copied" in page.delivery_status.text().lower()
+
+
+def test_problem_report_opens_only_the_reviewed_preview_for_email(qtbot) -> None:
+    page = ProblemReportPage()
+    qtbot.addWidget(page)
+    page.set_report("reviewed report")
+    with qtbot.waitSignal(page.send_requested) as request:
+        page.send_button.click()
+    assert request.args == ["reviewed report"]
+    assert page.send_button.text() == "Send report to"
+    assert "alex@liminalmemory.com" in page.send_button.toolTip()
+
+
+def test_problem_report_email_status_handles_success_and_recovery(qtbot) -> None:
+    page = ProblemReportPage()
+    qtbot.addWidget(page)
+    page.set_email_opened("alex@liminalmemory.com")
+    assert "review it before sending" in page.delivery_status.text().lower()
+    page.set_delivery_error("Email unavailable. Copy the report instead.")
+    assert "copy the report" in page.delivery_status.text().lower()
 
 
 def test_diagnostic_controller_builds_and_redacts_failures(qtbot) -> None:

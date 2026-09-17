@@ -6,7 +6,7 @@ from PySide6.QtWidgets import QApplication, QLabel, QPushButton, QWidget
 
 from demail.ui.archive_flow import STEP_NAMES, ArchiveWorkflow
 from demail.ui.main_window import NAVIGATION, MainWindow
-from demail.ui.theme import BLACK, CARD, PANEL, WHITE, apply_theme
+from demail.ui.theme import BLACK, CARD, PANEL, STYLE_SHEET, WHITE, apply_theme
 
 
 def descendants(widget: QWidget) -> Iterator[QWidget]:
@@ -106,3 +106,43 @@ def test_theme_is_nearly_black_with_white_text_and_dark_gray_cards(qapp) -> None
     assert palette.windowText().color().name().upper() == WHITE.upper()
     assert PANEL in qapp.styleSheet()
     assert CARD in qapp.styleSheet()
+    assert 'QPushButton[primary="true"]:disabled' in STYLE_SHEET
+    assert "background: #303030" in STYLE_SHEET
+
+
+def test_problem_report_email_draft_uses_fixed_recipient(
+    qtbot, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    opened: list[tuple[str, str, str]] = []
+    monkeypatch.setattr(
+        "demail.ui.main_window.open_email_draft",
+        lambda recipient, subject, body: opened.append((recipient, subject, body)),
+    )
+    window = MainWindow()
+    qtbot.addWidget(window)
+    window.problem_report_page.set_report("reviewed report")
+
+    window.problem_report_page.send_button.click()
+
+    assert opened == [
+        ("alex@liminalmemory.com", "de-Mail Desktop problem report", "reviewed report")
+    ]
+    assert "draft opened" in window.problem_report_page.delivery_status.text().lower()
+
+
+def test_problem_report_email_failure_keeps_copy_and_save_available(
+    qtbot, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def fail(*_args) -> None:
+        raise OSError("no mail application")
+
+    monkeypatch.setattr("demail.ui.main_window.open_email_draft", fail)
+    window = MainWindow()
+    qtbot.addWidget(window)
+    window.problem_report_page.set_report("reviewed report")
+
+    window.problem_report_page.send_button.click()
+
+    assert "could not be opened" in window.problem_report_page.delivery_status.text()
+    assert window.problem_report_page.copy_button.isEnabled()
+    assert window.problem_report_page.save_button.isEnabled()

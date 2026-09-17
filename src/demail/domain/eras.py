@@ -51,6 +51,55 @@ class EraSplit:
         return self.worst_deviation_points <= 5.0
 
 
+def combine_eras(
+    eras: tuple[Era, ...], include_spam_and_trash: bool = False
+) -> SelectionCriteria:
+    """Combine chronological mailbox eras without filling gaps between them."""
+    if not eras:
+        raise ValueError("Choose at least one mailbox third.")
+
+    merged: list[tuple[date | None, date | None]] = []
+    for era in eras:
+        if era.approximate_count < 0:
+            raise ValueError("Mailbox era count cannot be negative.")
+        if (
+            era.start_date is not None
+            and era.end_exclusive is not None
+            and era.end_exclusive <= era.start_date
+        ):
+            raise ValueError("Mailbox era boundaries are invalid.")
+        if not merged:
+            merged.append((era.start_date, era.end_exclusive))
+            continue
+
+        previous_start, previous_end = merged[-1]
+        if previous_end is None or era.start_date is None or era.start_date < previous_end:
+            raise ValueError("Mailbox eras overlap or are out of order.")
+        if era.start_date == previous_end:
+            merged[-1] = (previous_start, era.end_exclusive)
+        else:
+            merged.append((era.start_date, era.end_exclusive))
+
+    ranges = tuple(
+        (
+            start.isoformat() if start else None,
+            (end_exclusive - timedelta(days=1)).isoformat() if end_exclusive else None,
+        )
+        for start, end_exclusive in merged
+    )
+    if len(ranges) == 1:
+        start, end = ranges[0]
+        return SelectionCriteria(
+            start_date=start,
+            end_date=end,
+            include_spam_and_trash=include_spam_and_trash,
+        )
+    return SelectionCriteria(
+        date_ranges=ranges,
+        include_spam_and_trash=include_spam_and_trash,
+    )
+
+
 def split_eras(periods: list[PeriodCount]) -> EraSplit:
     populated = sorted(
         (period for period in periods if period.count > 0), key=lambda item: item.start

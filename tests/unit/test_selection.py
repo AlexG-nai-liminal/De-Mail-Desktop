@@ -91,3 +91,36 @@ def test_description_uses_display_language_without_dash_characters() -> None:
     )
     assert "—" not in description and "–" not in description
 
+
+def test_disjoint_date_ranges_become_one_grouped_gmail_query() -> None:
+    criteria = SelectionCriteria(
+        date_ranges=((None, "2011-12-31"), ("2021-01-01", None)),
+        sender="archive@example.com",
+    )
+    assert build_query(criteria).q == (
+        "((before:2012/01/01) OR (after:2021/01/01)) from:archive@example.com"
+    )
+    assert criteria.describe() == "2 separate mailbox periods · from archive@example.com"
+
+
+@pytest.mark.parametrize(
+    ("criteria", "problem"),
+    [
+        (
+            SelectionCriteria(start_date="2024-01-01", date_ranges=((None, "2020-01-01"),)),
+            "cannot mix",
+        ),
+        (SelectionCriteria(date_ranges=((None, None),)), "cannot cover the whole mailbox"),
+        (SelectionCriteria(date_ranges=(("bad", None),)), "start is not a valid date"),
+        (
+            SelectionCriteria(date_ranges=(("2024-02-01", "2024-01-01"),)),
+            "ends before it starts",
+        ),
+    ],
+)
+def test_malformed_multiple_date_ranges_are_rejected(
+    criteria: SelectionCriteria, problem: str
+) -> None:
+    assert any(problem in value for value in criteria.validate())
+    with pytest.raises(ValueError, match=problem):
+        build_query(criteria)

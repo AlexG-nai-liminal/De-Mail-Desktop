@@ -24,6 +24,16 @@ def _quote_sender(value: str) -> str:
     return value
 
 
+def _date_terms(start_date: str | None, end_date: str | None) -> list[str]:
+    terms: list[str] = []
+    if start_date:
+        terms.append(f"after:{_gmail_date(start_date):%Y/%m/%d}")
+    if end_date:
+        exclusive_end = _gmail_date(end_date) + timedelta(days=1)
+        terms.append(f"before:{exclusive_end:%Y/%m/%d}")
+    return terms
+
+
 def build_query(criteria: SelectionCriteria) -> GmailListQuery:
     if criteria.is_manual_selection:
         raise ValueError(
@@ -34,11 +44,12 @@ def build_query(criteria: SelectionCriteria) -> GmailListQuery:
         raise ValueError(" ".join(problems))
 
     terms: list[str] = []
-    if criteria.start_date:
-        terms.append(f"after:{_gmail_date(criteria.start_date):%Y/%m/%d}")
-    if criteria.end_date:
-        exclusive_end = _gmail_date(criteria.end_date) + timedelta(days=1)
-        terms.append(f"before:{exclusive_end:%Y/%m/%d}")
+    terms.extend(_date_terms(criteria.start_date, criteria.end_date))
+    if criteria.date_ranges:
+        alternatives = [
+            f"({' '.join(_date_terms(start, end))})" for start, end in criteria.date_ranges
+        ]
+        terms.append(f"({' OR '.join(alternatives)})")
     if criteria.sender and (sender := criteria.sender.strip()):
         terms.append(f"from:{_quote_sender(sender)}")
     if criteria.search_query and (search := criteria.search_query.strip()):
@@ -47,4 +58,3 @@ def build_query(criteria: SelectionCriteria) -> GmailListQuery:
 
     label_ids = (criteria.label_id,) if criteria.label_id and criteria.label_id.strip() else ()
     return GmailListQuery(" ".join(terms) or None, label_ids, criteria.include_spam_and_trash)
-

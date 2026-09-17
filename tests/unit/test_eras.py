@@ -2,7 +2,7 @@ from datetime import date
 
 import pytest
 
-from demail.domain.eras import EraKind, PeriodCount, split_eras
+from demail.domain.eras import Era, EraKind, PeriodCount, combine_eras, split_eras
 
 
 def years(first: int, *counts: int) -> list[PeriodCount]:
@@ -63,3 +63,42 @@ def test_malformed_periods_are_rejected(start: date, end: date, count: int) -> N
     with pytest.raises(ValueError):
         PeriodCount(start, end, count)
 
+
+def test_adjacent_selected_eras_are_merged_without_duplicate_boundaries() -> None:
+    oldest, middle, _ = split_eras(years(2018, 10, 10, 10, 10, 10, 10)).eras
+    criteria = combine_eras((oldest, middle), include_spam_and_trash=True)
+    assert criteria.start_date is None
+    assert criteria.end_date == "2021-12-31"
+    assert criteria.date_ranges == ()
+    assert criteria.include_spam_and_trash
+
+
+def test_separated_selected_eras_remain_separate() -> None:
+    oldest, _, newest = split_eras(years(2018, 10, 10, 10, 10, 10, 10)).eras
+    assert combine_eras((oldest, newest)).date_ranges == (
+        (None, "2019-12-31"),
+        ("2022-01-01", None),
+    )
+
+
+def test_combining_every_era_selects_whole_mailbox() -> None:
+    eras = split_eras(years(2018, 10, 10, 10, 10, 10, 10)).eras
+    assert combine_eras(eras).is_whole_mailbox
+
+
+@pytest.mark.parametrize(
+    "eras",
+    [
+        (),
+        (
+            Era(EraKind.PRESENT, date(2024, 1, 2), date(2024, 1, 1), 1),
+        ),
+        (
+            Era(EraKind.FAR_PAST, None, date(2024, 1, 3), 1),
+            Era(EraKind.PRESENT, date(2024, 1, 2), None, 1),
+        ),
+    ],
+)
+def test_invalid_era_combinations_fail_safely(eras: tuple[Era, ...]) -> None:
+    with pytest.raises(ValueError):
+        combine_eras(eras)

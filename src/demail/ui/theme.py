@@ -32,6 +32,9 @@ QPushButton:focus {{ border: 2px solid {WHITE}; padding: 8px 13px; }}
 QPushButton:disabled {{ color: #666666; border-color: #202020; }}
 QPushButton[primary="true"] {{ background: {WHITE}; color: {BLACK}; border-color: {WHITE}; }}
 QPushButton[primary="true"]:hover {{ background: #E6E6E6; }}
+QPushButton[primary="true"]:disabled {{
+    background: #303030; color: #777777; border-color: #3A3A3A;
+}}
 QPushButton[nav="true"] {{
     border: 0; border-radius: 8px; text-align: left; padding: 10px 12px;
     color: {MUTED}; font-weight: 500;
