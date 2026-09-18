@@ -9,10 +9,19 @@ import subprocess
 from collections.abc import Iterable
 from pathlib import Path
 
+try:
+    from tools.versioning import read_version, validate_generated_files
+except ModuleNotFoundError:  # Direct execution adds tools, rather than the repository, to sys.path.
+    from versioning import read_version, validate_generated_files
+
 ROOT = Path(__file__).resolve().parents[1]
 PAYLOAD_DIR = ROOT / "dist" / "de-Mail Desktop.dist"
 INSTALLER_SCRIPT = ROOT / "installer" / "de-mail-desktop.iss"
-OUTPUT_FILE = ROOT / "dist" / "installer" / "de-Mail-Desktop-Setup-0.1.0.exe"
+
+
+def output_file(root: Path = ROOT) -> Path:
+    """Return the installer path for the authoritative application version."""
+    return root / "dist" / "installer" / f"de-Mail-Desktop-Setup-{read_version(root)}.exe"
 
 
 def default_iscc_candidates() -> tuple[Path, ...]:
@@ -62,23 +71,28 @@ def build_installer(
     compiler: Path | None = None,
     script: Path = INSTALLER_SCRIPT,
     payload_dir: Path = PAYLOAD_DIR,
-    output_file: Path = OUTPUT_FILE,
+    output_file: Path | None = None,
 ) -> Path:
     """Compile the installer and verify that the expected artifact exists."""
+    stale = validate_generated_files(ROOT)
+    if stale:
+        raise ValueError("Generated version files are stale: " + ", ".join(stale))
     validate_payload(payload_dir)
     if not script.is_file():
         raise FileNotFoundError(f"Installer script not found: {script}")
 
     iscc = compiler or locate_iscc()
-    output_file.parent.mkdir(parents=True, exist_ok=True)
+    expected_output = output_file or globals()["output_file"]()
+    expected_output.parent.mkdir(parents=True, exist_ok=True)
     subprocess.run([str(iscc), "/Qp", str(script)], cwd=ROOT, check=True)
-    if not output_file.is_file() or output_file.stat().st_size == 0:
-        raise RuntimeError(f"Installer compiler did not create: {output_file}")
-    return output_file
+    if not expected_output.is_file() or expected_output.stat().st_size == 0:
+        raise RuntimeError(f"Installer compiler did not create: {expected_output}")
+    return expected_output
 
 
-def update_installation(installer: Path = OUTPUT_FILE) -> None:
+def update_installation(installer: Path | None = None) -> None:
     """Install or upgrade the permanent per-user installation in place."""
+    installer = installer or output_file()
     if not installer.is_file() or installer.stat().st_size == 0:
         raise FileNotFoundError(f"Setup executable not found: {installer}")
     subprocess.run(

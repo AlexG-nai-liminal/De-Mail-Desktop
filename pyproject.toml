@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "de-mail-desktop"
-version = "0.1.0"
+dynamic = ["version"]
 description = "A verified, user-controlled Gmail archive utility for Windows"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -32,6 +32,9 @@ de-mail-desktop = "demail.app:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/demail"]
+
+[tool.hatch.version]
+path = "src/demail/__init__.py"
 
 [tool.pytest.ini_options]
 addopts = "-ra --strict-markers"

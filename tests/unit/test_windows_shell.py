@@ -2,7 +2,12 @@ from pathlib import Path
 
 import pytest
 
-from demail.windows.shell import MAILTO_URI_LIMIT, open_email_draft, open_folder
+from demail.windows.shell import (
+    MAILTO_URI_LIMIT,
+    open_email_draft,
+    open_folder,
+    open_release_page,
+)
 
 
 def test_open_folder_uses_validated_absolute_directory(tmp_path: Path) -> None:
@@ -58,4 +63,38 @@ def test_email_draft_reports_launcher_failure() -> None:
     with pytest.raises(OSError, match="did not accept"):
         open_email_draft(
             "alex@liminalmemory.com", "Report", "Safe report", lambda _: False
+        )
+
+
+def test_release_page_opens_only_the_public_repository() -> None:
+    opened: list[str] = []
+    url = (
+        "https://github.com/AlexG-nai-liminal/"
+        "de-mail-desktop-releases/releases/tag/v0.3.0"
+    )
+    open_release_page(url, opened.append)
+    assert opened == [url]
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "http://github.com/AlexG-nai-liminal/de-mail-desktop-releases/releases/tag/v1.0.0",
+        "https://evil.invalid/AlexG-nai-liminal/de-mail-desktop-releases/releases/tag/v1.0.0",
+        "https://github.com/AlexG-nai-liminal/De-Mail-Desktop/releases/tag/v1.0.0",
+        "https://user@github.com/AlexG-nai-liminal/de-mail-desktop-releases/releases/tag/v1.0.0",
+        "https://github.com/AlexG-nai-liminal/de-mail-desktop-releases/releases/tag/v1.0.0?q=1",
+    ],
+)
+def test_release_page_rejects_untrusted_addresses(url: str) -> None:
+    with pytest.raises(ValueError, match="not trusted"):
+        open_release_page(url, lambda _: None)
+
+
+def test_release_page_reports_browser_failure() -> None:
+    with pytest.raises(OSError, match="did not accept"):
+        open_release_page(
+            "https://github.com/AlexG-nai-liminal/"
+            "de-mail-desktop-releases/releases/tag/v1.0.0",
+            lambda _: False,
         )

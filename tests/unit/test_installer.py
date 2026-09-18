@@ -1,6 +1,5 @@
 import importlib.util
 import subprocess
-import tomllib
 from pathlib import Path
 
 import pytest
@@ -24,10 +23,10 @@ def _complete_payload(path: Path) -> Path:
 
 def test_installer_contract_is_per_user_branded_and_preserves_user_data() -> None:
     script = (ROOT / "installer" / "de-mail-desktop.iss").read_text(encoding="utf-8")
-    with (ROOT / "pyproject.toml").open("rb") as stream:
-        version = tomllib.load(stream)["project"]["version"]
+    version_include = (ROOT / "installer" / "version.iss").read_text(encoding="utf-8")
 
-    assert f'#define MyAppVersion "{version}"' in script
+    assert '#include "version.iss"' in script
+    assert '#define MyAppVersion "0.2.0"' in version_include
     assert "PrivilegesRequired=lowest" in script
     assert "UsePreviousAppDir=yes" in script
     assert "DefaultDirName={localappdata}\\Programs\\{#MyAppName}" in script
@@ -43,6 +42,16 @@ def test_locate_iscc_prefers_an_explicit_existing_candidate(tmp_path: Path) -> N
     compiler.write_bytes(b"compiler")
 
     assert build_installer.locate_iscc([tmp_path / "missing.exe", compiler]) == compiler
+
+
+def test_output_file_uses_the_authoritative_version(tmp_path: Path) -> None:
+    package = tmp_path / "src" / "demail"
+    package.mkdir(parents=True)
+    (package / "__init__.py").write_text('__version__ = "7.8.9"\n', encoding="utf-8")
+
+    assert build_installer.output_file(tmp_path) == (
+        tmp_path / "dist" / "installer" / "de-Mail-Desktop-Setup-7.8.9.exe"
+    )
 
 
 def test_locate_iscc_rejects_missing_compiler(monkeypatch, tmp_path: Path) -> None:
@@ -102,6 +111,7 @@ def test_build_installer_invokes_compiler_and_returns_artifact(
         output.write_bytes(b"MZ installer")
 
     monkeypatch.setattr(build_installer.subprocess, "run", run)
+    monkeypatch.setattr(build_installer, "validate_generated_files", lambda _root: [])
 
     result = build_installer.build_installer(
         compiler=compiler,
@@ -125,6 +135,7 @@ def test_build_installer_propagates_compiler_failure(monkeypatch, tmp_path: Path
         raise subprocess.CalledProcessError(2, command)
 
     monkeypatch.setattr(build_installer.subprocess, "run", fail)
+    monkeypatch.setattr(build_installer, "validate_generated_files", lambda _root: [])
 
     with pytest.raises(subprocess.CalledProcessError):
         build_installer.build_installer(
@@ -142,6 +153,7 @@ def test_build_installer_rejects_success_without_output(monkeypatch, tmp_path: P
     compiler = tmp_path / "ISCC.exe"
     compiler.write_bytes(b"compiler")
     monkeypatch.setattr(build_installer.subprocess, "run", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(build_installer, "validate_generated_files", lambda _root: [])
 
     with pytest.raises(RuntimeError, match="did not create"):
         build_installer.build_installer(
@@ -150,6 +162,17 @@ def test_build_installer_rejects_success_without_output(monkeypatch, tmp_path: P
             payload_dir=payload,
             output_file=tmp_path / "setup.exe",
         )
+
+
+def test_build_installer_rejects_stale_generated_versions(monkeypatch) -> None:
+    monkeypatch.setattr(
+        build_installer,
+        "validate_generated_files",
+        lambda _root: ["installer/version.iss"],
+    )
+
+    with pytest.raises(ValueError, match="version files are stale"):
+        build_installer.build_installer()
 
 
 def test_update_installation_uses_silent_in_place_setup(monkeypatch, tmp_path: Path) -> None:

@@ -13,8 +13,9 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from demail.windows.shell import open_email_draft, open_folder
+from demail.windows.shell import open_email_draft, open_folder, open_release_page
 
+from .about import AboutPage, UpdateController
 from .archive import ArchiveController
 from .archive_flow import ArchiveWorkflow
 from .components import Card, page_heading
@@ -31,6 +32,7 @@ NAVIGATION = (
     ("Report a problem", "report"),
     ("Settings", "settings"),
     ("Help", "help"),
+    ("About", "about"),
 )
 
 REPORT_EMAIL = "alex@liminalmemory.com"
@@ -46,6 +48,7 @@ class MainWindow(QMainWindow):
         self.archive_controller: ArchiveController | None = None
         self.history_controller: HistoryController | None = None
         self.diagnostic_controller: DiagnosticController | None = None
+        self.update_controller: UpdateController | None = None
         self.connected_account: str | None = None
         self.setWindowTitle("de-Mail Desktop")
         self.setMinimumSize(960, 640)
@@ -79,6 +82,9 @@ class MainWindow(QMainWindow):
         self.content.addWidget(self._settings_page())
         self.help_page = HelpTutorialPage()
         self.content.addWidget(self.help_page)
+        self.about_page = AboutPage()
+        self.about_page.release_requested.connect(self._open_release_page)
+        self.content.addWidget(self.about_page)
         layout.addWidget(self.content, 1)
         self.setCentralWidget(root)
 
@@ -182,6 +188,18 @@ class MainWindow(QMainWindow):
         controller.started.connect(self.archive_workflow.set_connecting)
         controller.failed.connect(self.archive_workflow.set_connection_error)
         controller.connected.connect(self._connected)
+
+    def attach_update_controller(self, controller: UpdateController) -> None:
+        self.update_controller = controller
+        self.about_page.check_requested.connect(controller.check)
+        controller.started.connect(self.about_page.set_checking)
+        controller.completed.connect(self.about_page.show_result)
+
+    def _open_release_page(self, url: str) -> None:
+        try:
+            open_release_page(url)
+        except (OSError, ValueError):
+            self.about_page.set_open_error()
 
     def attach_selection_controller(self, controller: SelectionController) -> None:
         self.selection_controller = controller

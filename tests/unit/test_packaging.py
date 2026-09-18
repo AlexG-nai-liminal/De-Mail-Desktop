@@ -23,6 +23,13 @@ def test_deployment_configuration_uses_windows_gui_standalone_mode() -> None:
     assert "--include-data-dir=src/demail/assets/tutorial=" in (
         config["nuitka"]["extra_args"]
     )
+    assert "--include-data-files=CHANGELOG.md=CHANGELOG.md" in (
+        config["nuitka"]["extra_args"]
+    )
+    assert "--file-version=0.2.0.0" in config["nuitka"]["extra_args"]
+    assert "--product-version=0.2.0.0" in config["nuitka"]["extra_args"]
+    assert '--product-name="de-Mail Desktop"' in config["nuitka"]["extra_args"]
+    assert '--file-description="de-Mail Desktop"' in config["nuitka"]["extra_args"]
     assert set(config["qt"]["modules"].split(",")) == {"Core", "Gui", "Widgets"}
 
 
@@ -37,7 +44,9 @@ def test_deployment_entry_point_imports_from_source_layout() -> None:
 def test_package_and_runtime_versions_remain_identical() -> None:
     with (ROOT / "pyproject.toml").open("rb") as stream:
         project = tomllib.load(stream)
-    assert project["project"]["version"] == __version__
+    assert project["project"]["dynamic"] == ["version"]
+    assert project["tool"]["hatch"]["version"]["path"] == "src/demail/__init__.py"
+    assert __version__ == "0.2.0"
 
 
 def test_runtime_dependency_surface_is_intentional_and_bounded() -> None:

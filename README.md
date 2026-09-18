@@ -62,6 +62,26 @@ Build the installer and update an existing permanent installation in place with:
 The stable installer identity preserves the installation directory, OAuth authorization,
 settings, archive history, and user-created archives across updates. No uninstall is required.
 
+## Versioned releases and updates
+
+`src/demail/__init__.py` is the one authoritative application version. Advance it and add a
+version-history entry with the release command instead of editing packaging files by hand:
+
+```powershell
+.venv\Scripts\python tools\bump_version.py patch --note "Describe the release"
+```
+
+Build and verify the complete standalone application, installer, and SHA-256 checksum with:
+
+```powershell
+tools\build_release.ps1
+```
+
+The About page's `Check for update` button performs a read-only metadata check against the
+public release-only repository. It never downloads or installs an update automatically. The
+private source repository, public download feed, signing prerequisites, and tagged GitHub
+release process are documented in [`docs/RELEASES.md`](docs/RELEASES.md).
+
 The Android project at `../LiteSyncProject` is a read-only behavioral reference. Compatibility
 requirements identified during the initial review are recorded in
 [`docs/android-compatibility.md`](docs/android-compatibility.md).

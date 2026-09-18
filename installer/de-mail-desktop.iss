@@ -1,7 +1,22 @@
 #define MyAppName "de-Mail Desktop"
-#define MyAppVersion "0.1.0"
+#include "version.iss"
 #define MyAppPublisher "de-Mail"
 #define MyAppExeName "de-Mail Desktop.exe"
+
+; Refuse to wrap a stale standalone build under a newer setup version.
+#define BuiltExePath SourcePath + "..\dist\de-Mail Desktop.dist\main.exe"
+#ifndef SkipBuildCheck
+#if !FileExists(BuiltExePath)
+  #error Build the standalone application before compiling the installer.
+#endif
+#define BuiltExeVersion GetVersionNumbersString(BuiltExePath)
+#if BuiltExeVersion == ""
+  #error The standalone application has no Windows version resource.
+#endif
+#if BuiltExeVersion != MyAppVersionQuad
+  #error "Stale standalone build: main.exe is " + BuiltExeVersion + " but setup is " + MyAppVersionQuad
+#endif
+#endif
 
 [Setup]
 AppId={{A5113E86-571E-4B6B-8D61-CCF02E24910F}

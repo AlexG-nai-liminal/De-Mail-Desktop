@@ -23,11 +23,11 @@ def test_help_is_main_navigation_item_directly_below_settings(qtbot) -> None:
     window = MainWindow()
     qtbot.addWidget(window)
 
-    assert NAVIGATION[-2:] == (("Settings", "settings"), ("Help", "help"))
-    window.nav_buttons[-1].click()
+    assert NAVIGATION[-3:-1] == (("Settings", "settings"), ("Help", "help"))
+    window.nav_buttons[-2].click()
 
-    assert window.content.currentIndex() == len(NAVIGATION) - 1
-    assert window.nav_buttons[-1].isChecked()
+    assert window.content.currentIndex() == len(NAVIGATION) - 2
+    assert window.nav_buttons[-2].isChecked()
     assert window.help_page.gallery.current_index == 0
     assert window.help_page.gallery.slide_title.text() == "Download the desktop client file"
     assert "OAuth client files" in [

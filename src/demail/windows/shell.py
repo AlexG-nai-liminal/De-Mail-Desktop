@@ -1,11 +1,13 @@
 import os
 import re
+import webbrowser
 from collections.abc import Callable
 from pathlib import Path
-from urllib.parse import quote, urlencode
+from urllib.parse import quote, urlencode, urlsplit
 
 MAILTO_URI_LIMIT = 8_000
 _EMAIL_ADDRESS = re.compile(r"^[^@\s,;]+@[^@\s,;]+\.[^@\s,;]+$")
+_RELEASE_PATH = "/AlexG-nai-liminal/de-mail-desktop-releases/releases/"
 
 
 def open_folder(path: Path, opener: Callable[[str], object] | None = None) -> None:
@@ -37,3 +39,23 @@ def open_email_draft(
     result = launch(uri)
     if result is False:
         raise OSError("The default email application did not accept the draft.")
+
+
+def open_release_page(
+    url: str, opener: Callable[[str], object] | None = None
+) -> None:
+    """Open only a trusted HTTPS page in the public release repository."""
+    parsed = urlsplit(url)
+    if (
+        parsed.scheme != "https"
+        or parsed.netloc != "github.com"
+        or not parsed.path.startswith(_RELEASE_PATH)
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.query
+        or parsed.fragment
+    ):
+        raise ValueError("The update page address is not trusted.")
+    launch = opener or webbrowser.open
+    if launch(url) is False:
+        raise OSError("The default browser did not accept the update page.")

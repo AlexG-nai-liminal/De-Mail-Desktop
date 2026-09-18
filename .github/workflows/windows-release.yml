@@ -1,0 +1,162 @@
+name: Windows release
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: python -m pip install --upgrade pip
+      - run: python -m pip install -e ".[test,dev]"
+      - run: python tools/check_version.py
+      - run: python -m ruff check .
+      - run: python -m pytest
+
+  build:
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+    needs: test
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    env:
+      PYTHONUTF8: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: python -m pip install --upgrade pip
+      - run: python -m pip install -e ".[test,dev]"
+      - name: Resolve and validate release version
+        id: version
+        shell: pwsh
+        run: |
+          python tools/check_version.py
+          $version = (python -c "from demail import __version__; print(__version__)").Trim()
+          if ($env:GITHUB_REF -like 'refs/tags/*') {
+            $tag = $env:GITHUB_REF.Substring('refs/tags/'.Length)
+            if ($tag -ne "v$version") {
+              throw "Tag $tag does not match application version $version"
+            }
+          }
+          "version=$version" >> $env:GITHUB_OUTPUT
+      - name: Install Inno Setup
+        run: choco install innosetup --no-progress -y
+      - name: Build standalone application
+        shell: pwsh
+        run: |
+          $env:NUITKA_CACHE_DIR = Join-Path $PWD '.nuitka-cache'
+          $env:PYTHONPATH = Join-Path $PWD 'src'
+          .venv\Scripts\pyside6-deploy.exe --config-file pysidedeploy.spec --extra-ignore-dirs=tools --force
+      - name: Verify and exercise frozen application
+        shell: pwsh
+        run: |
+          $version = '${{ steps.version.outputs.version }}'
+          $exe = Join-Path $PWD 'dist\de-Mail Desktop.dist\main.exe'
+          if (-not (Test-Path -LiteralPath $exe -PathType Leaf)) { throw "Missing $exe" }
+          if ((Get-Item -LiteralPath $exe).VersionInfo.FileVersion -ne "$version.0") {
+            throw "Frozen application version does not match $version"
+          }
+          foreach ($mode in @('--selftest', '--launchtest')) {
+            $process = Start-Process -FilePath $exe -ArgumentList $mode -Wait -PassThru -NoNewWindow
+            if ($process.ExitCode -ne 0) { throw "$mode failed with $($process.ExitCode)" }
+          }
+      - name: Sign standalone application
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        env:
+          SIGNING_PFX: ${{ secrets.WINDOWS_SIGNING_CERTIFICATE_BASE64 }}
+          SIGNING_PASSWORD: ${{ secrets.WINDOWS_SIGNING_CERTIFICATE_PASSWORD }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:SIGNING_PFX) -or
+              [string]::IsNullOrWhiteSpace($env:SIGNING_PASSWORD)) {
+            throw 'Tagged releases require the Windows signing certificate secrets'
+          }
+          $certificate = Join-Path $env:RUNNER_TEMP 'de-mail-signing.pfx'
+          [IO.File]::WriteAllBytes($certificate, [Convert]::FromBase64String($env:SIGNING_PFX))
+          $signtool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin" `
+            -Filter signtool.exe -Recurse | Sort-Object FullName -Descending | Select-Object -First 1
+          if ($null -eq $signtool) { throw 'signtool.exe was not found' }
+          & $signtool.FullName sign /fd SHA256 /td SHA256 /tr http://timestamp.digicert.com `
+            /f $certificate /p $env:SIGNING_PASSWORD 'dist\de-Mail Desktop.dist\main.exe'
+          & $signtool.FullName verify /pa /all 'dist\de-Mail Desktop.dist\main.exe'
+          Remove-Item -LiteralPath $certificate -Force
+      - name: Build setup
+        run: python tools/build_installer.py
+      - name: Sign and verify setup
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        env:
+          SIGNING_PFX: ${{ secrets.WINDOWS_SIGNING_CERTIFICATE_BASE64 }}
+          SIGNING_PASSWORD: ${{ secrets.WINDOWS_SIGNING_CERTIFICATE_PASSWORD }}
+        run: |
+          $version = '${{ steps.version.outputs.version }}'
+          $setup = "dist\installer\de-Mail-Desktop-Setup-$version.exe"
+          $certificate = Join-Path $env:RUNNER_TEMP 'de-mail-signing.pfx'
+          [IO.File]::WriteAllBytes($certificate, [Convert]::FromBase64String($env:SIGNING_PFX))
+          $signtool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin" `
+            -Filter signtool.exe -Recurse | Sort-Object FullName -Descending | Select-Object -First 1
+          & $signtool.FullName sign /fd SHA256 /td SHA256 /tr http://timestamp.digicert.com `
+            /f $certificate /p $env:SIGNING_PASSWORD $setup
+          & $signtool.FullName verify /pa /all $setup
+          Remove-Item -LiteralPath $certificate -Force
+      - name: Create checksum and verify setup metadata
+        shell: pwsh
+        run: |
+          $version = '${{ steps.version.outputs.version }}'
+          $setup = Get-Item -LiteralPath "dist\installer\de-Mail-Desktop-Setup-$version.exe"
+          if ($setup.VersionInfo.FileVersion -notlike "$version*") {
+            throw "Setup version does not match $version"
+          }
+          $hash = (Get-FileHash -LiteralPath $setup.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+          [IO.File]::WriteAllText(
+            (Join-Path $setup.DirectoryName 'SHA256SUMS.txt'),
+            "$hash  $($setup.Name)`n",
+            [Text.UTF8Encoding]::new($false)
+          )
+      - uses: actions/upload-artifact@v4
+        with:
+          name: de-Mail-Desktop-${{ steps.version.outputs.version }}
+          path: |
+            dist/installer/de-Mail-Desktop-Setup-${{ steps.version.outputs.version }}.exe
+            dist/installer/SHA256SUMS.txt
+          if-no-files-found: error
+      - name: Publish private source release
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "v${{ steps.version.outputs.version }}" `
+            'dist/installer/de-Mail-Desktop-Setup-${{ steps.version.outputs.version }}.exe' `
+            'dist/installer/SHA256SUMS.txt' --verify-tag --generate-notes
+      - name: Publish public release-only feed
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.DEMAIL_RELEASES_TOKEN }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:GH_TOKEN)) {
+            throw 'DEMAIL_RELEASES_TOKEN is required for tagged releases'
+          }
+          gh release create "v${{ steps.version.outputs.version }}" `
+            'dist/installer/de-Mail-Desktop-Setup-${{ steps.version.outputs.version }}.exe' `
+            'dist/installer/SHA256SUMS.txt' `
+            --repo 'AlexG-nai-liminal/de-mail-desktop-releases' `
+            --title "de-Mail Desktop ${{ steps.version.outputs.version }}" `
+            --notes "Signed Windows release of de-Mail Desktop ${{ steps.version.outputs.version }}."
