@@ -20,6 +20,9 @@ def test_deployment_configuration_uses_windows_gui_standalone_mode() -> None:
     assert "--include-data-files=src/demail/assets/de-mail.ico=" in (
         config["nuitka"]["extra_args"]
     )
+    assert "--include-data-dir=src/demail/assets/tutorial=" in (
+        config["nuitka"]["extra_args"]
+    )
     assert set(config["qt"]["modules"].split(",")) == {"Core", "Gui", "Widgets"}
 
 

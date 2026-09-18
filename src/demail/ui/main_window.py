@@ -30,6 +30,7 @@ NAVIGATION = (
     ("Reclaim storage", "reclaim"),
     ("Report a problem", "report"),
     ("Settings", "settings"),
+    ("Help", "help"),
 )
 
 REPORT_EMAIL = "alex@liminalmemory.com"
@@ -76,6 +77,8 @@ class MainWindow(QMainWindow):
         self.problem_report_page.send_requested.connect(self._send_diagnostic_report)
         self.content.addWidget(self.problem_report_page)
         self.content.addWidget(self._settings_page())
+        self.help_page = HelpTutorialPage()
+        self.content.addWidget(self.help_page)
         layout.addWidget(self.content, 1)
         self.setCentralWidget(root)
 
@@ -126,14 +129,6 @@ class MainWindow(QMainWindow):
         return page
 
     def _settings_page(self) -> QWidget:
-        self.settings_stack = QStackedWidget()
-        self.settings_stack.addWidget(self._settings_overview())
-        self.help_page = HelpTutorialPage()
-        self.help_page.back_requested.connect(lambda: self.settings_stack.setCurrentIndex(0))
-        self.settings_stack.addWidget(self.help_page)
-        return self.settings_stack
-
-    def _settings_overview(self) -> QWidget:
         page = QWidget()
         layout = QVBoxLayout(page)
         layout.setContentsMargins(38, 30, 38, 30)
@@ -165,20 +160,6 @@ class MainWindow(QMainWindow):
         card.layout.addWidget(self.client_path_input)
         card.layout.addWidget(self.choose_client_button)
         layout.addWidget(card)
-        help_card = Card()
-        help_title = QLabel("Help")
-        help_title.setStyleSheet("font-size: 16px; font-weight: 650;")
-        help_detail = QLabel(
-            "A quick OAuth explanation and a short visual tutorial with keyboard controls."
-        )
-        help_detail.setObjectName("muted")
-        help_detail.setWordWrap(True)
-        self.open_help_button = QPushButton("Open Help")
-        self.open_help_button.clicked.connect(lambda: self.settings_stack.setCurrentIndex(1))
-        help_card.layout.addWidget(help_title)
-        help_card.layout.addWidget(help_detail)
-        help_card.layout.addWidget(self.open_help_button)
-        layout.addWidget(help_card)
         layout.addStretch()
         return page
 
@@ -330,8 +311,6 @@ class MainWindow(QMainWindow):
             raise ValueError("Navigation page is out of range")
         self.content.setCurrentIndex(index)
         self.nav_buttons[index].setChecked(True)
-        if index == 4:
-            self.settings_stack.setCurrentIndex(0)
         if index == 1 and self.history_controller:
             self.history_controller.load()
         if index == 3 and self.diagnostic_controller:

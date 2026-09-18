@@ -1,8 +1,14 @@
 import pytest
 from PySide6.QtCore import QAbstractAnimation, Qt
 
-from demail.ui.help import TUTORIAL_SLIDES, HelpTutorialPage, TutorialGallery
-from demail.ui.main_window import MainWindow
+from demail.ui.help import (
+    TUTORIAL_ASSET_DIR,
+    TUTORIAL_SLIDES,
+    HelpTutorialPage,
+    TutorialGallery,
+    TutorialIllustration,
+)
+from demail.ui.main_window import NAVIGATION, MainWindow
 
 
 def wait_for_gallery(qtbot, gallery: TutorialGallery, index: int) -> None:
@@ -13,21 +19,49 @@ def wait_for_gallery(qtbot, gallery: TutorialGallery, index: int) -> None:
     )
 
 
-def test_settings_opens_help_before_the_tutorial(qtbot) -> None:
+def test_help_is_main_navigation_item_directly_below_settings(qtbot) -> None:
     window = MainWindow()
     qtbot.addWidget(window)
-    window.show_page(4)
-    assert window.settings_stack.currentIndex() == 0
 
-    window.open_help_button.click()
+    assert NAVIGATION[-2:] == (("Settings", "settings"), ("Help", "help"))
+    window.nav_buttons[-1].click()
 
-    assert window.settings_stack.currentIndex() == 1
+    assert window.content.currentIndex() == len(NAVIGATION) - 1
+    assert window.nav_buttons[-1].isChecked()
     assert window.help_page.gallery.current_index == 0
     assert window.help_page.gallery.slide_title.text() == "Download the desktop client file"
     assert "OAuth client files" in [
         label.text()
         for label in window.help_page.findChildren(type(window.help_page.gallery.slide_title))
     ]
+
+
+def test_all_comic_tutorial_assets_are_wide_loadable_images(qtbot) -> None:
+    illustration = TutorialIllustration()
+    qtbot.addWidget(illustration)
+    assert len(TUTORIAL_SLIDES) == 4
+    for slide in TUTORIAL_SLIDES:
+        path = TUTORIAL_ASSET_DIR / slide.image_name
+        assert path.is_file()
+        assert path.stat().st_size > 100_000
+        illustration.set_scene(slide.image_name)
+        assert illustration.image_available
+        assert illustration._pixmap.width() > illustration._pixmap.height()
+
+
+def test_missing_tutorial_asset_has_safe_fallback(qtbot, tmp_path) -> None:
+    illustration = TutorialIllustration(asset_dir=tmp_path)
+    qtbot.addWidget(illustration)
+    illustration.resize(640, 250)
+    assert not illustration.image_available
+    assert not illustration.grab().isNull()
+
+
+def test_unknown_tutorial_asset_is_rejected(qtbot) -> None:
+    illustration = TutorialIllustration()
+    qtbot.addWidget(illustration)
+    with pytest.raises(ValueError, match="Unknown"):
+        illustration.set_scene("not-a-tutorial-image.png")
 
 
 def test_tutorial_buttons_fade_between_four_scenes(qtbot) -> None:

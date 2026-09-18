@@ -1,17 +1,18 @@
 """Compact OAuth help and a monochrome, keyboard-friendly tutorial gallery."""
 
 from dataclasses import dataclass
+from pathlib import Path
 
 from PySide6.QtCore import (
     QEasingCurve,
-    QPointF,
     QPropertyAnimation,
+    QRect,
     QRectF,
     QSequentialAnimationGroup,
     Qt,
     Signal,
 )
-from PySide6.QtGui import QColor, QKeySequence, QPainter, QPen, QShortcut
+from PySide6.QtGui import QColor, QKeySequence, QPainter, QPainterPath, QPixmap, QShortcut
 from PySide6.QtWidgets import (
     QGraphicsOpacityEffect,
     QHBoxLayout,
@@ -23,14 +24,16 @@ from PySide6.QtWidgets import (
 )
 
 from .components import Card, page_heading
-from .theme import BLACK, BORDER, CARD, MUTED, WHITE
+from .theme import BLACK, BORDER, MUTED
+
+TUTORIAL_ASSET_DIR = Path(__file__).resolve().parent.parent / "assets" / "tutorial"
 
 
 @dataclass(frozen=True, slots=True)
 class TutorialSlide:
     title: str
     description: str
-    scene: str
+    image_name: str
 
 
 TUTORIAL_SLIDES = (
@@ -38,24 +41,24 @@ TUTORIAL_SLIDES = (
         "Download the desktop client file",
         "In Google Cloud, open APIs and Services, then Credentials. Create a Desktop app "
         "OAuth client and download its JSON file.",
-        "download",
+        "oauth-download.png",
     ),
     TutorialSlide(
         "Choose the file in de-Mail",
         "Return to Settings, choose the downloaded JSON file, and keep it in a private folder.",
-        "choose",
+        "choose-client-file.png",
     ),
     TutorialSlide(
         "Approve read-only access",
         "Your browser signs you in. Google validates the desktop client and the local callback "
         "before granting Gmail read-only access.",
-        "authorize",
+        "authorize-read-only.png",
     ),
     TutorialSlide(
         "Archive and verify",
         "Choose mail, review the exact count, choose a destination, and let de-Mail verify every "
         "saved message.",
-        "archive",
+        "archive-verify.png",
     ),
 )
 
@@ -63,17 +66,27 @@ TUTORIAL_SLIDES = (
 class TutorialIllustration(QWidget):
     clicked = Signal()
 
-    def __init__(self, parent: QWidget | None = None) -> None:
+    def __init__(
+        self, parent: QWidget | None = None, asset_dir: Path | None = None
+    ) -> None:
         super().__init__(parent)
-        self._scene = TUTORIAL_SLIDES[0].scene
-        self.setMinimumHeight(190)
+        self._asset_dir = asset_dir or TUTORIAL_ASSET_DIR
+        self._image_name = ""
+        self._pixmap = QPixmap()
+        self.setMinimumHeight(250)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setAccessibleName("Tutorial illustration. Click for the next scene.")
+        self.set_scene(TUTORIAL_SLIDES[0].image_name)
 
-    def set_scene(self, scene: str) -> None:
-        if scene not in {slide.scene for slide in TUTORIAL_SLIDES}:
+    @property
+    def image_available(self) -> bool:
+        return not self._pixmap.isNull()
+
+    def set_scene(self, image_name: str) -> None:
+        if image_name not in {slide.image_name for slide in TUTORIAL_SLIDES}:
             raise ValueError("Unknown tutorial scene")
-        self._scene = scene
+        self._image_name = image_name
+        self._pixmap = QPixmap(str(self._asset_dir / image_name))
         self.update()
 
     def mouseReleaseEvent(self, event) -> None:
@@ -87,81 +100,39 @@ class TutorialIllustration(QWidget):
         del event
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
         bounds = QRectF(self.rect()).adjusted(1, 1, -1, -1)
         painter.setBrush(QColor(BLACK))
-        painter.setPen(QPen(QColor(BORDER), 1.5))
+        painter.setPen(Qt.PenStyle.NoPen)
         painter.drawRoundedRect(bounds, 12, 12)
-        painter.translate(bounds.left(), bounds.top())
-        width, height = bounds.width(), bounds.height()
-        painter.setPen(QPen(QColor(WHITE), 3, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
-        if self._scene == "download":
-            self._draw_cloud(painter, width, height)
-        elif self._scene == "choose":
-            self._draw_file_picker(painter, width, height)
-        elif self._scene == "authorize":
-            self._draw_authorization(painter, width, height)
+        clip = QPainterPath()
+        clip.addRoundedRect(bounds, 12, 12)
+        painter.setClipPath(clip)
+        target = bounds.toAlignedRect()
+        if self.image_available:
+            scaled = self._pixmap.scaled(
+                target.size(),
+                Qt.AspectRatioMode.KeepAspectRatioByExpanding,
+                Qt.TransformationMode.SmoothTransformation,
+            )
+            source = QRect(
+                max(0, (scaled.width() - target.width()) // 2),
+                max(0, (scaled.height() - target.height()) // 2),
+                min(target.width(), scaled.width()),
+                min(target.height(), scaled.height()),
+            )
+            painter.drawPixmap(target, scaled, source)
         else:
-            self._draw_archive(painter, width, height)
-
-    @staticmethod
-    def _draw_cloud(painter: QPainter, width: float, height: float) -> None:
-        center = QPointF(width * 0.42, height * 0.46)
-        painter.drawEllipse(QRectF(center.x() - 54, center.y() - 22, 54, 44))
-        painter.drawEllipse(QRectF(center.x() - 16, center.y() - 44, 70, 66))
-        painter.drawLine(center.x() - 52, center.y() + 22, center.x() + 52, center.y() + 22)
-        x = width * 0.70
-        painter.drawRoundedRect(QRectF(x - 28, height * 0.30, 56, 76), 5, 5)
-        painter.drawLine(width * 0.52, height * 0.50, x - 38, height * 0.50)
-        painter.drawLine(x - 46, height * 0.44, x - 38, height * 0.50)
-        painter.drawLine(x - 46, height * 0.56, x - 38, height * 0.50)
-        painter.setPen(QPen(QColor(MUTED), 2))
-        painter.drawLine(x - 15, height * 0.43, x + 15, height * 0.43)
-        painter.drawLine(x - 15, height * 0.53, x + 10, height * 0.53)
-
-    @staticmethod
-    def _draw_file_picker(painter: QPainter, width: float, height: float) -> None:
-        window = QRectF(width * 0.18, height * 0.20, width * 0.64, height * 0.60)
-        painter.drawRoundedRect(window, 8, 8)
-        painter.drawLine(window.left(), window.top() + 30, window.right(), window.top() + 30)
-        painter.setPen(QPen(QColor(MUTED), 2))
-        for offset in (0.39, 0.50, 0.61):
-            painter.drawLine(width * 0.28, height * offset, width * 0.61, height * offset)
-        painter.setPen(QPen(QColor(WHITE), 3))
-        painter.drawRoundedRect(QRectF(width * 0.62, height * 0.59, 70, 30), 6, 6)
-
-    @staticmethod
-    def _draw_authorization(painter: QPainter, width: float, height: float) -> None:
-        painter.drawRoundedRect(
-            QRectF(width * 0.16, height * 0.18, width * 0.68, height * 0.64), 9, 9
-        )
-        painter.drawLine(width * 0.16, height * 0.34, width * 0.84, height * 0.34)
-        center = QPointF(width * 0.50, height * 0.56)
-        shield = [
-            QPointF(center.x(), center.y() - 40),
-            QPointF(center.x() + 38, center.y() - 24),
-            QPointF(center.x() + 30, center.y() + 25),
-            QPointF(center.x(), center.y() + 46),
-            QPointF(center.x() - 30, center.y() + 25),
-            QPointF(center.x() - 38, center.y() - 24),
-        ]
-        painter.drawPolygon(shield)
-        painter.drawLine(center.x() - 16, center.y() + 1, center.x() - 4, center.y() + 14)
-        painter.drawLine(center.x() - 4, center.y() + 14, center.x() + 21, center.y() - 15)
-
-    @staticmethod
-    def _draw_archive(painter: QPainter, width: float, height: float) -> None:
-        left = width * 0.18
-        top = height * 0.30
-        segment_width = width * 0.18
-        for index in range(3):
-            rect = QRectF(left + index * segment_width, top, segment_width, 48)
-            painter.setBrush(QColor(WHITE) if index < 2 else QColor(CARD))
-            painter.drawRect(rect)
+            painter.setPen(QColor(MUTED))
+            painter.drawText(
+                target,
+                Qt.AlignmentFlag.AlignCenter,
+                "Tutorial image unavailable",
+            )
+        painter.setClipping(False)
         painter.setBrush(Qt.BrushStyle.NoBrush)
-        painter.drawLine(width * 0.50, height * 0.60, width * 0.50, height * 0.73)
-        painter.drawLine(width * 0.45, height * 0.68, width * 0.50, height * 0.73)
-        painter.drawLine(width * 0.55, height * 0.68, width * 0.50, height * 0.73)
-        painter.drawRoundedRect(QRectF(width * 0.38, height * 0.73, width * 0.24, 28), 5, 5)
+        painter.setPen(QColor(BORDER))
+        painter.drawRoundedRect(bounds, 12, 12)
 
 
 class TutorialGallery(QWidget):
@@ -275,7 +246,7 @@ class TutorialGallery(QWidget):
 
     def _show_slide(self) -> None:
         slide = TUTORIAL_SLIDES[self._index]
-        self.illustration.set_scene(slide.scene)
+        self.illustration.set_scene(slide.image_name)
         self.slide_title.setText(slide.title)
         self.slide_description.setText(slide.description)
         self.progress_label.setText(f"{self._index + 1} of {len(TUTORIAL_SLIDES)}")
@@ -284,16 +255,14 @@ class TutorialGallery(QWidget):
 
 
 class HelpTutorialPage(QWidget):
-    back_requested = Signal()
-
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(38, 30, 38, 30)
         layout.setSpacing(18)
         heading, _ = page_heading(
-            "Settings",
             "Help",
+            "OAuth and archiving",
             "A quick explanation of Google authorization, followed by a visual walkthrough.",
         )
         layout.addWidget(heading)
@@ -342,6 +311,3 @@ class HelpTutorialPage(QWidget):
         scroll.setWidgetResizable(True)
         scroll.setWidget(body)
         layout.addWidget(scroll, 1)
-        self.back_button = QPushButton("Back to Settings")
-        self.back_button.clicked.connect(self.back_requested.emit)
-        layout.addWidget(self.back_button, alignment=Qt.AlignmentFlag.AlignLeft)

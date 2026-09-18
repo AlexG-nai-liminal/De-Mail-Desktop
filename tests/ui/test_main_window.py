@@ -30,6 +30,7 @@ def test_main_window_has_requested_navigation_and_minimum_desktop_size(qtbot) ->
     assert [button.text() for button in window.nav_buttons] == [item[0] for item in NAVIGATION]
     assert window.nav_buttons[0].isChecked()
     assert window.content.currentIndex() == 0
+    assert [button.text() for button in window.nav_buttons[-2:]] == ["Settings", "Help"]
 
 
 def test_navigation_switches_one_content_page_at_a_time(qtbot) -> None:

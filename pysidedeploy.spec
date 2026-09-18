@@ -24,7 +24,7 @@ plugins =
 [nuitka]
 macos.permissions = 
 mode = standalone
-extra_args = --quiet --noinclude-qt-translations --windows-console-mode=disable --include-package=demail --include-data-files=src/demail/assets/de-mail.ico=demail/assets/de-mail.ico
+extra_args = --quiet --noinclude-qt-translations --windows-console-mode=disable --include-package=demail --include-data-files=src/demail/assets/de-mail.ico=demail/assets/de-mail.ico --include-data-dir=src/demail/assets/tutorial=demail/assets/tutorial
 
 [buildozer]
 mode = debug
