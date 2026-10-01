@@ -13,11 +13,19 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from demail.auth.client_config import OAuthClientConfigError
+from demail.auth.client_source import describe_oauth_source, resolve_oauth_client
 from demail.windows.shell import open_email_draft, open_folder, open_release_page
 
 from .about import AboutPage, UpdateController
 from .archive import ArchiveController
 from .archive_flow import ArchiveWorkflow
+from .authorization import (
+    AuthorizationController,
+    PrivacyDisclosureDialog,
+    accept_disclosure,
+    disclosure_is_current,
+)
 from .components import Card, page_heading
 from .connection import ConnectedMailbox, ConnectionController
 from .diagnostics import DiagnosticController, ProblemReportPage, save_diagnostic_report
@@ -49,6 +57,7 @@ class MainWindow(QMainWindow):
         self.history_controller: HistoryController | None = None
         self.diagnostic_controller: DiagnosticController | None = None
         self.update_controller: UpdateController | None = None
+        self.authorization_controller: AuthorizationController | None = None
         self.connected_account: str | None = None
         self.setWindowTitle("de-Mail Desktop")
         self.setMinimumSize(960, 640)
@@ -142,15 +151,15 @@ class MainWindow(QMainWindow):
         heading, _ = page_heading(
             "Settings",
             "Google authorization",
-            "Use a Desktop app OAuth client from the same Google Cloud project as the Android app.",
+            "Production releases connect with de-Mail's built-in Google identity.",
         )
         layout.addWidget(heading)
         card = Card()
-        title = QLabel("Desktop OAuth client file")
+        title = QLabel("Authorization source")
         title.setStyleSheet("font-size: 16px; font-weight: 650;")
         detail = QLabel(
-            "This file identifies the application. User access and refresh credentials are stored "
-            "separately with Windows protection."
+            "Gmail access is read-only. Authorization is protected by Windows and Gmail data is "
+            "processed locally, never sent to Liminal servers."
         )
         detail.setObjectName("muted")
         detail.setWordWrap(True)
@@ -159,13 +168,35 @@ class MainWindow(QMainWindow):
         self.client_path_input.setPlaceholderText("No Desktop OAuth client selected")
         stored_path = self.settings.value("google/client_path", "", str)
         self.client_path_input.setText(stored_path)
+        self.authorization_source_label = QLabel(describe_oauth_source(stored_path))
+        self.authorization_source_label.setObjectName("muted")
         self.choose_client_button = QPushButton("Choose client file")
         self.choose_client_button.clicked.connect(self._choose_client_file)
         card.layout.addWidget(title)
         card.layout.addWidget(detail)
+        card.layout.addWidget(self.authorization_source_label)
         card.layout.addWidget(self.client_path_input)
         card.layout.addWidget(self.choose_client_button)
+        production_client = resolve_oauth_client() if not stored_path else None
+        if production_client and production_client.is_production:
+            self.client_path_input.hide()
+            self.choose_client_button.hide()
         layout.addWidget(card)
+        account_card = Card()
+        account_title = QLabel("Connected Google account")
+        account_title.setStyleSheet("font-size: 16px; font-weight: 650;")
+        self.connected_account_label = QLabel("Not connected")
+        self.connected_account_label.setObjectName("muted")
+        self.disconnect_button = QPushButton("Disconnect Google account")
+        self.disconnect_button.setEnabled(False)
+        self.reset_authorization_button = QPushButton("Reset authorization")
+        self.disconnect_button.clicked.connect(self._disconnect_authorization)
+        self.reset_authorization_button.clicked.connect(self._reset_authorization)
+        account_card.layout.addWidget(account_title)
+        account_card.layout.addWidget(self.connected_account_label)
+        account_card.layout.addWidget(self.disconnect_button)
+        account_card.layout.addWidget(self.reset_authorization_button)
+        layout.addWidget(account_card)
         layout.addStretch()
         return page
 
@@ -179,15 +210,59 @@ class MainWindow(QMainWindow):
         if path:
             self.client_path_input.setText(path)
             self.settings.setValue("google/client_path", path)
+            self.authorization_source_label.setText(describe_oauth_source(path))
+
+    def _oauth_client_path(self) -> Path | None:
+        try:
+            source = resolve_oauth_client(self.client_path_input.text())
+        except OAuthClientConfigError:
+            return None
+        return source.path if source else None
 
     def attach_connection_controller(self, controller: ConnectionController) -> None:
         self.connection_controller = controller
-        self.archive_workflow.connect_requested.connect(
-            lambda: controller.connect_mailbox(self.client_path_input.text())
-        )
+        self.archive_workflow.connect_requested.connect(self._request_connection)
         controller.started.connect(self.archive_workflow.set_connecting)
         controller.failed.connect(self.archive_workflow.set_connection_error)
         controller.connected.connect(self._connected)
+
+    def attach_authorization_controller(self, controller: AuthorizationController) -> None:
+        self.authorization_controller = controller
+        controller.disconnected.connect(self._authorization_cleared)
+        controller.reset_completed.connect(self._authorization_reset)
+        controller.failed.connect(self._authorization_error)
+
+    def _request_connection(self) -> None:
+        if self.connection_controller is None:
+            return
+        if not disclosure_is_current(self.settings):
+            dialog = PrivacyDisclosureDialog(self)
+            if dialog.exec() != PrivacyDisclosureDialog.DialogCode.Accepted:
+                return
+            accept_disclosure(self.settings)
+        self.connection_controller.connect_mailbox(self._oauth_client_path())
+
+    def _disconnect_authorization(self) -> None:
+        if self.authorization_controller:
+            self.authorization_controller.disconnect()
+
+    def _reset_authorization(self) -> None:
+        if self.authorization_controller:
+            self.authorization_controller.reset()
+
+    def _authorization_cleared(self) -> None:
+        self.connected_account = None
+        self.connected_account_label.setText("Not connected")
+        self.disconnect_button.setEnabled(False)
+        self.archive_workflow.set_disconnected()
+
+    def _authorization_reset(self) -> None:
+        self._authorization_cleared()
+        self.client_path_input.clear()
+        self.authorization_source_label.setText(describe_oauth_source())
+
+    def _authorization_error(self, message: str) -> None:
+        self.connected_account_label.setText(message)
 
     def attach_update_controller(self, controller: UpdateController) -> None:
         self.update_controller = controller
@@ -291,6 +366,8 @@ class MainWindow(QMainWindow):
 
     def _connected(self, mailbox: ConnectedMailbox) -> None:
         self.connected_account = mailbox.email_address
+        self.connected_account_label.setText(mailbox.email_address)
+        self.disconnect_button.setEnabled(True)
         message_word = "message" if mailbox.messages_total == 1 else "messages"
         thread_word = "conversation" if mailbox.threads_total == 1 else "conversations"
         totals = (

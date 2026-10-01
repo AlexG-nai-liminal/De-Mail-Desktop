@@ -19,6 +19,7 @@ from demail.gmail.client import (
     SelectionResult,
 )
 from demail.gmail.query import build_query
+from demail.jobs.worker_lock import WorkerLockedError, archive_worker_lock
 from demail.persistence.archive_repository import ArchiveRepository
 
 
@@ -85,6 +86,17 @@ class ArchiveOperationEngine:
         operation_id: int,
         progress: Callable[[ArchiveProgress], None] | None = None,
     ) -> None:
+        try:
+            with archive_worker_lock(self.repository.database.path, operation_id):
+                self._run_locked(operation_id, progress)
+        except WorkerLockedError as error:
+            raise OperationAlreadyRunningError(str(error)) from error
+
+    def _run_locked(
+        self,
+        operation_id: int,
+        progress: Callable[[ArchiveProgress], None] | None,
+    ) -> None:
         token = uuid.uuid4().hex
         if not self.repository.acquire_worker(
             operation_id, token, datetime.now(UTC) - timedelta(hours=1)
@@ -103,6 +115,14 @@ class ArchiveOperationEngine:
         operation = self.repository.operation(operation_id)
         if operation is None:
             raise ValueError("Archive operation does not exist.")
+        profile = self.gmail.profile()
+        if (
+            not profile.email_address.strip()
+            or profile.email_address.casefold() != str(operation["account_email"]).casefold()
+        ):
+            raise GoogleAuthorizationError(
+                "Reconnect the Google account used to create this archive before resuming."
+            )
         try:
             archive_folder_name = require_safe_archive_component(
                 str(operation["archive_folder_name"])

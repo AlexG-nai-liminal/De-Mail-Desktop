@@ -1,3 +1,4 @@
+import re
 import struct
 from pathlib import Path
 
@@ -21,5 +22,7 @@ def test_windows_icon_contains_all_required_pixel_sizes(qapp) -> None:
 
 def test_application_icon_palette_is_black_and_white() -> None:
     svg = (ICON.with_name("app-icon.svg")).read_text(encoding="utf-8")
-    assert '#050505' in svg
-    assert svg.count('#FFFFFF') == 3
+    colors = {value.upper() for value in re.findall(r"#[0-9A-Fa-f]{6}", svg)}
+    assert colors == {"#050505", "#FFFFFF"}
+    assert 'stroke-linecap="round"' in svg
+    assert svg.count("<path") == 3

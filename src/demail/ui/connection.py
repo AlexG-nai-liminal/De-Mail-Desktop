@@ -92,10 +92,10 @@ class ConnectionController(QObject):
         self.thread_pool = thread_pool or QThreadPool.globalInstance()
         self._tasks: set[_ConnectionTask] = set()
 
-    def connect_mailbox(self, client_path: str) -> None:
-        path = Path(client_path)
-        if not client_path.strip() or not path.is_file():
-            self.failed.emit("Choose a Google Desktop OAuth client file in Settings first.")
+    def connect_mailbox(self, client_path: str | Path | None) -> None:
+        path = Path(client_path) if client_path else None
+        if path is None or not path.is_file():
+            self.failed.emit("Google authorization is not configured yet.")
             return
         task = _ConnectionTask(self.service_factory(path))
         self._tasks.add(task)

@@ -337,6 +337,13 @@ class ArchiveWorkflow(QWidget):
         self.connect_button.setEnabled(False)
         self._update_actions()
 
+    def set_disconnected(self) -> None:
+        self._connected = False
+        self.account_status.setText("Not connected")
+        self.connect_button.setText("Connect Google account")
+        self.connect_button.setEnabled(True)
+        self._update_actions()
+
     def set_connecting(self) -> None:
         self.connect_button.setEnabled(False)
         self.connect_button.setText("Connecting...")

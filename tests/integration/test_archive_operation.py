@@ -19,6 +19,7 @@ from demail.gmail.client import (
     SelectionResult,
 )
 from demail.jobs.archive_operation import ArchiveOperationEngine, OperationAlreadyRunningError
+from demail.jobs.worker_lock import archive_worker_lock
 from demail.persistence.archive_repository import ArchiveRepository
 from demail.persistence.database import Database
 
@@ -367,6 +368,86 @@ def test_active_worker_prevents_second_worker(
     with pytest.raises(OperationAlreadyRunningError):
         engine.run(operation_id)
     assert gmail.downloaded == []
+
+
+@pytest.mark.parametrize("email", ["other@example.com", "", "   "])
+def test_resume_rejects_wrong_or_blank_account_and_recovers(
+    repository: ArchiveRepository, tmp_path: Path, email: str
+) -> None:
+    gmail = FakeGmail({"a": b"original"})
+    engine, operation_id = prepare(repository, gmail, tmp_path / "chosen")
+
+    class OtherAccount(FakeGmail):
+        def profile(self) -> GmailProfile:
+            return GmailProfile(email, 1, 1, "history")
+
+    other = OtherAccount({"a": b"wrong account"})
+    before = dict(repository.operation(operation_id))
+    with pytest.raises(GoogleAuthorizationError, match="account used to create"):
+        ArchiveOperationEngine(other, repository).run(operation_id)
+    assert other.metadata_calls == other.downloaded == []
+    assert dict(repository.operation(operation_id)) == before
+    assert repository.messages(operation_id)[0]["attempts"] == 0
+    engine.run(operation_id)
+    assert repository.operation(operation_id)["status"] == "VERIFIED"
+
+
+def test_resume_accepts_account_email_case_difference(
+    repository: ArchiveRepository, tmp_path: Path
+) -> None:
+    class SameAccount(FakeGmail):
+        def profile(self) -> GmailProfile:
+            return GmailProfile("ARCHIVE@example.com", 1, 1, "history")
+
+    _, operation_id = prepare(repository, FakeGmail({"a": b"one"}), tmp_path / "chosen")
+    gmail = SameAccount({"a": b"one"})
+    ArchiveOperationEngine(gmail, repository).run(operation_id)
+    assert repository.operation(operation_id)["status"] == "VERIFIED"
+
+
+def test_profile_failure_leaves_archive_untouched_and_releases_locks(
+    repository: ArchiveRepository, tmp_path: Path
+) -> None:
+    gmail = FakeGmail({"a": b"one"})
+    engine, operation_id = prepare(repository, gmail, tmp_path / "chosen")
+
+    class OfflineAccount(FakeGmail):
+        def profile(self) -> GmailProfile:
+            raise GoogleAuthorizationError("Authorization unavailable")
+
+    offline = OfflineAccount({"a": b"one"})
+    with pytest.raises(GoogleAuthorizationError, match="unavailable"):
+        ArchiveOperationEngine(offline, repository).run(operation_id)
+    operation = repository.operation(operation_id)
+    assert operation["status"] == "QUEUED"
+    assert operation["worker_token"] is None
+    assert offline.metadata_calls == offline.downloaded == []
+    engine.run(operation_id)
+    assert repository.operation(operation_id)["status"] == "VERIFIED"
+
+
+def test_hour_old_live_worker_cannot_be_replaced(
+    repository: ArchiveRepository, tmp_path: Path
+) -> None:
+    gmail = FakeGmail({"a": b"one"})
+    engine, operation_id = prepare(repository, gmail, tmp_path / "chosen")
+    assert repository.acquire_worker(
+        operation_id, "original-worker", datetime.now(UTC) - timedelta(hours=1)
+    )
+    with repository.database.connect() as connection:
+        connection.execute(
+            "UPDATE archive_operations SET worker_acquired_at = ? WHERE id = ?",
+            ((datetime.now(UTC) - timedelta(hours=1, seconds=1)).isoformat(), operation_id),
+        )
+    with (
+        archive_worker_lock(repository.database.path, operation_id),
+        pytest.raises(OperationAlreadyRunningError),
+    ):
+        engine.run(operation_id)
+    assert repository.operation(operation_id)["worker_token"] == "original-worker"
+    assert gmail.metadata_calls == gmail.downloaded == []
+    engine.run(operation_id)
+    assert repository.operation(operation_id)["status"] == "VERIFIED"
 
 
 def test_archive_folder_name_collision_creates_new_operation_folder(

@@ -1,0 +1,9 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Security | de-Mail Desktop</title><link rel="stylesheet" href="styles.css"></head>
+<body><header class="shell"><a class="brand" href="index.html">de-Mail</a><nav aria-label="Primary"><a href="privacy.html">Privacy</a><a href="terms.html">Terms</a><a href="delete-data.html">Delete data</a></nav></header>
+<main class="shell document"><p class="eyebrow">Local-only architecture</p><h1>There is no Liminal server in the message path.</h1>
+<h2>Authorization</h2><p>de-Mail requests exactly <code>gmail.readonly</code>. Google's page opens in your system browser and returns through a temporary localhost callback. The refresh credential is encrypted for the current Windows user.</p>
+<h2>Archiving</h2><p>Gmail message data is streamed through bounded memory into atomic files in the folder you selected. de-Mail records SHA-256 hashes and reads saved messages back to verify them.</p>
+<h2>Diagnostics</h2><p>Diagnostics use an allowlist of operation counts and platform facts. They exclude message content, subjects, attachments, credentials, authorization headers, paths, and complete account addresses. Nothing is transmitted automatically.</p>
+<h2>Updates</h2><p>The update checker reads bounded metadata from a fixed public GitHub repository. It does not download or execute an update. Public production installers will be Authenticode-signed and accompanied by a SHA-256 checksum.</p>
+<h2>Report a concern</h2><p>Email <a href="mailto:alex@liminalmemory.com">alex@liminalmemory.com</a>. Do not include Gmail content, OAuth credentials, or other private material.</p></main>
+<footer class="shell"><div class="links"><span>© 2026 Liminal</span><a href="index.html">Home</a><a href="privacy.html">Privacy</a></div></footer></body></html>

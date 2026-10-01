@@ -1,11 +1,30 @@
+import json
 import time
 from pathlib import Path
 
 from PySide6.QtCore import QSettings
 from PySide6.QtTest import QSignalSpy
 
+from demail.ui.authorization import DISCLOSURE_KEY, DISCLOSURE_VERSION
 from demail.ui.connection import ConnectedMailbox, ConnectionController
 from demail.ui.main_window import MainWindow
+
+
+def write_client(path: Path) -> None:
+    path.write_text(
+        json.dumps(
+            {
+                "installed": {
+                    "client_id": "123-example.apps.googleusercontent.com",
+                    "client_secret": "development-secret",
+                    "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+                    "token_uri": "https://oauth2.googleapis.com/token",
+                    "redirect_uris": ["http://localhost"],
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
 
 
 class SuccessfulService:
@@ -32,16 +51,17 @@ def test_missing_client_file_fails_without_starting_worker(tmp_path: Path, qtbot
     controller.connect_mailbox(str(tmp_path / "missing.json"))
     assert failed.count() == 1
     assert started.count() == 0
-    assert "Settings" in failed.at(0)[0]
+    assert "not configured" in failed.at(0)[0]
 
 
 def test_successful_connection_runs_off_ui_thread_and_updates_window(
     tmp_path: Path, qtbot
 ) -> None:
     client_path = tmp_path / "client.json"
-    client_path.write_text("{}", encoding="utf-8")
+    write_client(client_path)
     settings = QSettings(str(tmp_path / "settings.ini"), QSettings.Format.IniFormat)
     settings.setValue("google/client_path", str(client_path))
+    settings.setValue(DISCLOSURE_KEY, DISCLOSURE_VERSION)
     controller = ConnectionController(lambda _: SuccessfulService())
     window = MainWindow(settings)
     window.attach_connection_controller(controller)

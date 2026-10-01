@@ -20,6 +20,7 @@ from demail.persistence.archive_repository import ArchiveRepository
 from demail.persistence.database import Database
 from demail.ui.about import UpdateController
 from demail.ui.archive import ArchiveController
+from demail.ui.authorization import AuthorizationController
 from demail.ui.connection import ConnectionController, GoogleConnectionService
 from demail.ui.diagnostics import DiagnosticController
 from demail.ui.history import HistoryController
@@ -98,6 +99,9 @@ def main(argv: list[str] | None = None) -> int:
         return GoogleConnectionService(client_path, authorization, tokens)
 
     window = MainWindow()
+    window.attach_authorization_controller(
+        AuthorizationController(credential_store, window.settings)
+    )
     window.attach_update_controller(UpdateController())
     controller = ConnectionController(connection_service)
     window.attach_connection_controller(controller)
