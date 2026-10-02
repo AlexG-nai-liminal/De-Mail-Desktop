@@ -64,12 +64,17 @@ refresh token. A desktop client cannot keep its client secret confidential.
 User credentials remain protected separately with Windows DPAPI.
 
 As checked on October 2, 2026: Gmail API is enabled, Gmail read-only is declared,
-and the audience is External / Testing with `alex@liminalmemory.com` added as a
-test user. The homepage and policies are publicly reachable on Squarespace, and
+and the audience is External / In production after product-owner approval.
+The homepage and policies are publicly reachable on Squarespace, and
 Google branding changes were saved. Domain-wide Search Console ownership was
 verified on October 2, 2026 using an additional DNS TXT record at Squarespace.
-Public rollout still needs a real connection/archive demonstration, a change
-from Testing to Production, and Google's restricted-scope verification.
+Google verified and published the branding on October 2, 2026. Public rollout
+still needs a real connection/archive demonstration and Google's restricted-scope
+verification. Google currently shows
+an unapproved-scope lifetime cap of 100 users.
+The scope-review form has been prepared with Email backup/takeout and the scope
+justification, but cannot be saved without Google's required YouTube demo URL.
+These unsaved form fields should be rechecked after reconnecting to the browser.
 Packaging an identity does not complete Google approval.
 
 Local review installer: `de-Mail-Desktop-Setup-0.2.0.exe` (unsigned).

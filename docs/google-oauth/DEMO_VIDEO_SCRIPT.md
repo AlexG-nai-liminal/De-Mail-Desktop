@@ -13,6 +13,8 @@ mail; use the dedicated review account.
 4. Click **Connect Google account** and pause on the first-run privacy disclosure.
 5. Continue into Google's OAuth flow. Keep the consent screen and requested scope
    visible long enough to read.
+   Google requires the expected unverified-app screen to be shown in the recording.
+   The account owner must handle that screen and approve Gmail access themselves.
 6. Return to de-Mail and show the connected review account.
 7. Select a small set containing a plain message and a message with an attachment.
 8. Choose an empty local folder, archive the selection, and allow verification to
@@ -41,3 +43,7 @@ servers. The application cannot modify or delete Gmail messages.”
 - Confirm the video shows the same OAuth client, branding, scope, and executable
   submitted for review.
 - Put the final video URL in `[DEMO_VIDEO_URL]` in the submission checklist.
+- Upload to YouTube as **Unlisted**, then provide that URL in Google's scope-review
+  form. The form cannot save the intended-use category and justification until
+  this required video link is supplied. Do not use a placeholder or a simulated
+  app demonstration.

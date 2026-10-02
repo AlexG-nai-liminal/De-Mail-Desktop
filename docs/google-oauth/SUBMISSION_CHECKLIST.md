@@ -17,9 +17,9 @@
 - [x] Gmail API enabled
 - [x] App name is `de-Mail Desktop`
 - [ ] Production monochrome icon uploaded
-- [x] User type is External (currently Testing)
+- [x] User type is External; audience In production after explicit approval on October 2, 2026
 - [x] Only `https://www.googleapis.com/auth/gmail.readonly` declared
-- [ ] Branding published and brand verification complete
+- [x] Branding published and brand verification complete on October 2, 2026
 - [x] Desktop OAuth client created for production: de-Mail Desktop Production
 - [ ] Unused or development OAuth clients absent from the production project
 
@@ -38,7 +38,7 @@
 
 ## Reviewer submission
 
-- [ ] Scope justification pasted without changing technical meaning
+- [x] Scope justification entered in review form; unsaved until required demo URL is supplied
 - [ ] Demo video follows the supplied script
 - [ ] Demo video URL: `[DEMO_VIDEO_URL]`
 - [ ] Reviewer account and instructions supplied if Google requests them
