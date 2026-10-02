@@ -217,6 +217,7 @@ deployment/
 credentials.json
 client_secret*.json
 src/demail/assets/google-oauth-client.json
+src/demail/assets/google-oauth-client.json.partial
 *.oauth-client.json
 token.json
 authorization.bin

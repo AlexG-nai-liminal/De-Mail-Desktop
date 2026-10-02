@@ -24,7 +24,7 @@ plugins =
 [nuitka]
 macos.permissions = 
 mode = standalone
-extra_args = --quiet --noinclude-qt-translations --windows-console-mode=disable --include-package=demail --include-data-files=src/demail/assets/de-mail.ico=demail/assets/de-mail.ico --include-data-dir=src/demail/assets/tutorial=demail/assets/tutorial --include-data-files=CHANGELOG.md=CHANGELOG.md --file-version=0.2.0.0 --product-version=0.2.0.0 --company-name=de-Mail --product-name="de-Mail Desktop" --file-description="de-Mail Desktop"
+extra_args = --quiet --noinclude-qt-translations --windows-console-mode=disable --include-package=demail --include-data-dir=src/demail/assets=demail/assets --include-data-files=CHANGELOG.md=CHANGELOG.md --file-version=0.2.0.0 --product-version=0.2.0.0 --company-name=de-Mail --product-name="de-Mail Desktop" --file-description="de-Mail Desktop"
 
 [buildozer]
 mode = debug

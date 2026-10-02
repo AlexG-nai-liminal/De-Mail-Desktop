@@ -36,6 +36,9 @@ def run_selftest(asset_root: Path | None = None) -> None:
 
     root = asset_root or Path(__file__).resolve().parent / "assets"
     required = [root / "de-mail.ico"]
+    from demail.ui.support import SUPPORT_CODES
+
+    required.extend(root / "support" / filename for _, filename in SUPPORT_CODES)
     required.extend(root / "tutorial" / slide.image_name for slide in TUTORIAL_SLIDES)
     failures: list[str] = []
     for path in required:

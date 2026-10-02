@@ -17,10 +17,7 @@ def test_deployment_configuration_uses_windows_gui_standalone_mode() -> None:
     assert config["nuitka"]["mode"] == "standalone"
     assert "--windows-console-mode=disable" in config["nuitka"]["extra_args"]
     assert "--include-package=demail" in config["nuitka"]["extra_args"]
-    assert "--include-data-files=src/demail/assets/de-mail.ico=" in (
-        config["nuitka"]["extra_args"]
-    )
-    assert "--include-data-dir=src/demail/assets/tutorial=" in (
+    assert "--include-data-dir=src/demail/assets=demail/assets" in (
         config["nuitka"]["extra_args"]
     )
     assert "--include-data-files=CHANGELOG.md=CHANGELOG.md" in (

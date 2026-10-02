@@ -6,7 +6,7 @@ import sys
 from collections.abc import Callable
 from pathlib import Path
 
-from PySide6.QtCore import QObject, QRunnable, QThreadPool, Signal
+from PySide6.QtCore import QObject, QRunnable, Qt, QThreadPool, Signal
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
@@ -21,6 +21,7 @@ from demail import __version__
 from demail.updates import UpdateResult, UpdateState, check_for_update
 
 from .components import Card, page_heading
+from .support import SupportDialog
 
 MAX_CHANGELOG_CHARACTERS = 20_000
 
@@ -111,6 +112,18 @@ class AboutPage(QWidget):
         scroll.setWidgetResizable(True)
         scroll.setWidget(body)
         layout.addWidget(scroll, 1)
+        self.support_button = QPushButton("Support")
+        self.support_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.support_button.setStyleSheet(
+            "QPushButton { border: 0; border-top: 1px solid #292929; border-radius: 0; "
+            "text-decoration: underline; font-size: 12px; color: #A3A3A3; }"
+            "QPushButton:hover, QPushButton:focus { color: #FFFFFF; }"
+        )
+        self.support_button.clicked.connect(self._show_support)
+        layout.addWidget(self.support_button)
+
+    def _show_support(self) -> None:
+        SupportDialog(self).exec()
 
     def set_checking(self) -> None:
         self._release_url = None

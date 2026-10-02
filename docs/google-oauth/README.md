@@ -35,6 +35,35 @@ against the final build before submission.
 - Data deletion: https://de-mail.liminalmemory.com/delete-data.html
 - Security: https://de-mail.liminalmemory.com/security.html
 
+## Packaging the Desktop identity
+
+Project: `de-mail-desktop-prod`. The local review build uses its Desktop app
+client named `de-Mail Desktop Production`.
+
+To install a downloaded Google Desktop client for a private local build:
+
+```powershell
+.venv\Scripts\python tools\configure_oauth.py "C:\path\to\downloaded-client.json"
+tools\build_release.ps1
+```
+
+The configuration command validates Google's endpoints, Desktop client type,
+and localhost callback before atomically replacing the ignored
+`src/demail/assets/google-oauth-client.json` file. Nuitka includes the assets
+directory in the frozen app. Customers then connect without selecting a JSON
+file. The identity must also be supplied on a clean CI runner; it is intentionally
+absent from Git, and a source-only checkout does not include it.
+
+The app identity is distributed in the installer and is not a user access or
+refresh token. A desktop client cannot keep its client secret confidential.
+User credentials remain protected separately with Windows DPAPI.
+
+As checked on October 2, 2026: Gmail API is enabled, Gmail read-only is declared,
+and the audience is External / Testing. The configured homepage domain does
+not resolve. Public rollout still needs website hosting and DNS, domain
+ownership verification, test-user validation, and Google's restricted-scope
+verification. Packaging an identity does not complete Google approval.
+
 ## Official references
 
 - [Google verification requirements](https://support.google.com/cloud/answer/13464321)
