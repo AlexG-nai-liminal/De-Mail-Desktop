@@ -66,10 +66,10 @@ User credentials remain protected separately with Windows DPAPI.
 As checked on October 2, 2026: Gmail API is enabled, Gmail read-only is declared,
 and the audience is External / Testing with `alex@liminalmemory.com` added as a
 test user. The homepage and policies are publicly reachable on Squarespace, and
-Google branding changes were saved. Domain-wide Search Console verification is
-pending a DNS TXT record; Squarespace requires account reauthentication before
-DNS editing. Public rollout still needs a real connection/archive demonstration,
-domain ownership verification, and Google's restricted-scope verification.
+Google branding changes were saved. Domain-wide Search Console ownership was
+verified on October 2, 2026 using an additional DNS TXT record at Squarespace.
+Public rollout still needs a real connection/archive demonstration, a change
+from Testing to Production, and Google's restricted-scope verification.
 Packaging an identity does not complete Google approval.
 
 Local review installer: `de-Mail-Desktop-Setup-0.2.0.exe` (unsigned).

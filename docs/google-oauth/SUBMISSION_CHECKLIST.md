@@ -7,7 +7,7 @@
 - [x] Homepage does not redirect to another domain
 - [x] Privacy policy linked from homepage and OAuth brand
 - [x] Terms, security, and data-deletion sections reachable
-- [ ] `liminalmemory.com` verified in Google Search Console
+- [x] `liminalmemory.com` verified in Google Search Console via DNS TXT on October 2, 2026
 - [ ] Support and developer contact email monitored
 
 ## Google Cloud production project
