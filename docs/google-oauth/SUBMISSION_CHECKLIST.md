@@ -3,10 +3,10 @@
 ## Identity and public pages
 
 - [ ] Homepage reviewed and approved by the product owner
-- [ ] Homepage publicly reachable without login
-- [ ] Homepage does not redirect to another domain
-- [ ] Privacy policy linked from homepage and OAuth brand
-- [ ] Terms, security, and data-deletion pages reachable
+- [x] Homepage publicly reachable without login: https://liminalmemory.com/de-mail
+- [x] Homepage does not redirect to another domain
+- [x] Privacy policy linked from homepage and OAuth brand
+- [x] Terms, security, and data-deletion sections reachable
 - [ ] `liminalmemory.com` verified in Google Search Console
 - [ ] Support and developer contact email monitored
 
@@ -14,27 +14,27 @@
 
 - [ ] Separate from development, testing, and Android development projects
 - [ ] Production project owners and editors reviewed
-- [ ] Gmail API enabled
-- [ ] App name is `de-Mail Desktop`
+- [x] Gmail API enabled
+- [x] App name is `de-Mail Desktop`
 - [ ] Production monochrome icon uploaded
-- [ ] User type is External
-- [ ] Only `https://www.googleapis.com/auth/gmail.readonly` declared
+- [x] User type is External (currently Testing)
+- [x] Only `https://www.googleapis.com/auth/gmail.readonly` declared
 - [ ] Branding published and brand verification complete
-- [ ] Desktop OAuth client created for production
+- [x] Desktop OAuth client created for production: de-Mail Desktop Production
 - [ ] Unused or development OAuth clients absent from the production project
 
 ## Review build
 
-- [ ] Production OAuth client embedded during the private build process
+- [x] Production OAuth client embedded during the private build process
 - [ ] OAuth client JSON absent from Git history and release source files
 - [ ] Installer Authenticode-signed
 - [ ] Installer tested in a clean Windows account or virtual machine
 - [ ] First-run disclosure appears before OAuth
 - [ ] Disconnect and Reset authorization tested
 - [ ] Diagnostics inspected for content and credentials
-- [ ] Version: `[VERSION]`
-- [ ] Installer: `[SIGNED_INSTALLER_FILENAME]`
-- [ ] SHA-256: `[INSTALLER_SHA256]`
+- [x] Version: `0.2.0`
+- [x] Local unsigned review installer: `de-Mail-Desktop-Setup-0.2.0.exe`
+- [x] SHA-256: `b4a1911008d2b84420809070c6063de401b75b3f16ad7caccddcd936543aef64`
 
 ## Reviewer submission
 

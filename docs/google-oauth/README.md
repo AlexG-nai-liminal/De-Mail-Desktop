@@ -6,7 +6,7 @@ against the final build before submission.
 
 ## Submission order
 
-1. Publish the approved site at `https://de-mail.liminalmemory.com`.
+1. Publish the app information and policies at `https://liminalmemory.com/de-mail`.
 2. Verify `liminalmemory.com` ownership in Google Search Console using a project
    owner or editor account.
 3. Configure the separate production Google Cloud project and enable Gmail API.
@@ -29,11 +29,16 @@ against the final build before submission.
 - App: de-Mail Desktop
 - Publisher: Liminal
 - Support: alex@liminalmemory.com
-- Homepage: https://de-mail.liminalmemory.com
-- Privacy: https://de-mail.liminalmemory.com/privacy.html
-- Terms: https://de-mail.liminalmemory.com/terms.html
-- Data deletion: https://de-mail.liminalmemory.com/delete-data.html
-- Security: https://de-mail.liminalmemory.com/security.html
+- Homepage: https://liminalmemory.com/de-mail
+- Privacy: https://liminalmemory.com/de-mail#privacy
+- Terms: https://liminalmemory.com/de-mail#terms
+- Data deletion: https://liminalmemory.com/de-mail#delete-data
+- Security: https://liminalmemory.com/de-mail#privacy
+
+The live site uses the existing Squarespace Liminal website. Its published
+rendered content is preserved in `squarespace-page.html`, including page-scoped formatting
+and the privacy, terms, and deletion anchors. `public-site/` remains an alternative
+standalone static-site package; its old subdomain is not the live OAuth website.
 
 ## Packaging the Desktop identity
 
@@ -59,10 +64,16 @@ refresh token. A desktop client cannot keep its client secret confidential.
 User credentials remain protected separately with Windows DPAPI.
 
 As checked on October 2, 2026: Gmail API is enabled, Gmail read-only is declared,
-and the audience is External / Testing. The configured homepage domain does
-not resolve. Public rollout still needs website hosting and DNS, domain
-ownership verification, test-user validation, and Google's restricted-scope
-verification. Packaging an identity does not complete Google approval.
+and the audience is External / Testing with `alex@liminalmemory.com` added as a
+test user. The homepage and policies are publicly reachable on Squarespace, and
+Google branding changes were saved. Domain-wide Search Console verification is
+pending a DNS TXT record; Squarespace requires account reauthentication before
+DNS editing. Public rollout still needs a real connection/archive demonstration,
+domain ownership verification, and Google's restricted-scope verification.
+Packaging an identity does not complete Google approval.
+
+Local review installer: `de-Mail-Desktop-Setup-0.2.0.exe` (unsigned).
+SHA-256: `b4a1911008d2b84420809070c6063de401b75b3f16ad7caccddcd936543aef64`.
 
 ## Official references
 
