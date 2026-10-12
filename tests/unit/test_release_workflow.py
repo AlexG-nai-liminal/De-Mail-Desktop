@@ -1,8 +1,28 @@
+import shlex
+import subprocess
+import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 WORKFLOW = ROOT / ".github" / "workflows" / "windows-release.yml"
 GUIDE = ROOT / "docs" / "RELEASES.md"
+
+
+def test_workflow_deployer_arguments_are_accepted_by_the_installed_cli():
+    workflow = WORKFLOW.read_text(encoding="utf-8")
+    command = next(
+        line.strip() for line in workflow.splitlines()
+        if line.strip().startswith("pyside6-deploy ")
+    )
+    result = subprocess.run(
+        [sys.executable, "-c",
+         "from PySide6.scripts.pyside_tool import deploy; deploy()",
+         *shlex.split(command)[1:], "--dry-run"],
+        cwd=ROOT, capture_output=True, text=True, timeout=60,
+    )
+    assert result.returncode == 0, result.stderr
+    assert "--assume-yes-for-downloads" in result.stdout
+    assert "--standalone" in result.stdout
 
 
 def test_release_workflow_keeps_source_and_public_feed_separate() -> None:
