@@ -58,8 +58,9 @@
 ## Release status checked October 12, 2026
 
 - Public release-only repository exists.
-- GitHub Actions repository and environment secrets are empty; signing, OAuth packaging,
-  and public publishing credentials must be configured before a tagged release.
+- Production Desktop identity configured as private Actions secret
+  `GOOGLE_DESKTOP_OAUTH_CLIENT_JSON` with explicit owner approval on October 12.
+- Signing and public publishing credentials still need configuration before a tagged release.
 - Google Cloud reports branding verified and data access under review after submission on
   October 12, 2026. Final scope approval is pending.
 - The private local 0.2.0 installer was rebuilt October 3. Its current checksum is in

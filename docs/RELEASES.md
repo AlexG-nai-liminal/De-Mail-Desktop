@@ -85,6 +85,8 @@ at least 16 MiB free to start; they do not predict the size of every selected me
 ### Status as of October 12, 2026
 
 Google data-access verification has been submitted and is under review. The public feed
-repository exists, but the private repository has no Actions secrets configured. A trusted
-signing certificate, publishing token, and production Desktop identity secret are required.
+repository exists. The production Desktop identity is configured as the private Actions secret
+`GOOGLE_DESKTOP_OAUTH_CLIENT_JSON`. Manual workflows build unsigned private test artifacts.
+A trusted signing certificate and publishing token are still required by the tagged public
+release workflow.
 Windows Sandbox is not installed on this machine; the clean-account/VM check is still pending.
