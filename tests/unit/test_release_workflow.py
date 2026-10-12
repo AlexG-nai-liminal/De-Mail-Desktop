@@ -28,7 +28,7 @@ def test_tagged_release_requires_matching_version_and_signatures() -> None:
     assert workflow.count("if ($LASTEXITCODE -ne 0)") >= 4
     assert "pyside6-deploy --config-file pysidedeploy.spec" in workflow
     assert ".venv\\Scripts\\pyside6-deploy.exe" not in workflow
-    assert "--force --loglevel INFO" in workflow
+    assert "--force -v" in workflow
     assert "timeout-minutes: 45" in workflow
 
 

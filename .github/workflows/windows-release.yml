@@ -95,7 +95,7 @@ jobs:
         run: |
           $env:NUITKA_CACHE_DIR = Join-Path $PWD '.nuitka-cache'
           $env:PYTHONPATH = Join-Path $PWD 'src'
-          pyside6-deploy --config-file pysidedeploy.spec --extra-ignore-dirs=tools --force --loglevel INFO
+          pyside6-deploy --config-file pysidedeploy.spec --extra-ignore-dirs=tools --force -v
           if ($LASTEXITCODE -ne 0) { throw 'Standalone deployment failed' }
       - name: Verify and exercise frozen application
         shell: pwsh
