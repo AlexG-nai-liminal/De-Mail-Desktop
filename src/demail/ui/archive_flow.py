@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
     QListWidgetItem,
     QProgressBar,
     QPushButton,
+    QScrollArea,
     QStackedWidget,
     QVBoxLayout,
     QWidget,
@@ -51,6 +52,9 @@ class ArchiveWorkflow(QWidget):
     exact_count_requested = Signal(object)
     destination_requested = Signal()
     archive_requested = Signal(object, str)
+    pause_requested = Signal()
+    retry_requested = Signal(int)
+    save_report_requested = Signal(str)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -301,6 +305,9 @@ class ArchiveWorkflow(QWidget):
         self.progress_label.setObjectName("muted")
         card.layout.addWidget(self.archive_progress)
         card.layout.addWidget(self.progress_label)
+        self.pause_button = QPushButton("Pause safely")
+        self.pause_button.clicked.connect(self._request_pause)
+        card.layout.addWidget(self.pause_button)
         return page
 
     def _verification_page(self) -> QWidget:
@@ -314,6 +321,9 @@ class ArchiveWorkflow(QWidget):
         self.verify_label.setObjectName("muted")
         card.layout.addWidget(self.verify_progress)
         card.layout.addWidget(self.verify_label)
+        self.verify_pause_button = QPushButton("Pause safely")
+        self.verify_pause_button.clicked.connect(self._request_pause)
+        card.layout.addWidget(self.verify_pause_button)
         return page
 
     def _complete_page(self) -> QWidget:
@@ -323,12 +333,43 @@ class ArchiveWorkflow(QWidget):
             "recorded hash.",
         )
         self.report_title = QLabel("Archive not started")
+        card.setMinimumWidth(600)
+        self.report_title.setWordWrap(True)
         self.report_title.setStyleSheet("font-size: 24px; font-weight: 650;")
         self.report_detail = QLabel("No result is available yet.")
         self.report_detail.setObjectName("muted")
+        self.report_detail.setWordWrap(True)
+        self.report_detail.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
+        self.report_detail.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         card.layout.addWidget(self.report_title)
-        card.layout.addWidget(self.report_detail)
+        self.report_scroll = QScrollArea()
+        self.report_scroll.setWidgetResizable(True)
+        self.report_scroll.setMinimumHeight(170)
+        self.report_scroll.setMaximumHeight(300)
+        self.report_scroll.setWidget(self.report_detail)
+        card.layout.addWidget(self.report_scroll)
+        self.retry_button = QPushButton("Resume / retry unresolved messages")
+        self.retry_button.setEnabled(False)
+        self.retry_button.clicked.connect(self._retry_archive)
+        card.layout.addWidget(self.retry_button)
+        self.save_report_button = QPushButton("Save archive report")
+        self.save_report_button.setEnabled(False)
+        self.save_report_button.clicked.connect(
+            lambda: self.save_report_requested.emit(self._report_text)
+        )
+        card.layout.addWidget(self.save_report_button)
         return page
+
+    def _request_pause(self) -> None:
+        self.pause_button.setEnabled(False)
+        self.verify_pause_button.setEnabled(False)
+        self.pause_button.setText("Pausing after the current message...")
+        self.verify_pause_button.setText("Pausing after the current file...")
+        self.pause_requested.emit()
+
+    def _retry_archive(self) -> None:
+        if self.retry_button.isEnabled():
+            self.retry_requested.emit(self._last_operation_id)
 
     def set_connected(self, account: str, totals: str) -> None:
         self._connected = True
@@ -390,6 +431,12 @@ class ArchiveWorkflow(QWidget):
 
     def set_archive_started(self) -> None:
         self._archive_running = True
+        self.pause_button.setText("Pause safely")
+        self.verify_pause_button.setText("Pause safely")
+        self.pause_button.setEnabled(True)
+        self.verify_pause_button.setEnabled(True)
+        self.retry_button.setEnabled(False)
+        self.save_report_button.setEnabled(False)
         self.archive_progress.setRange(0, 1)
         self.archive_progress.setValue(0)
         self.progress_label.setText("Preparing a fixed message list...")
@@ -416,7 +463,11 @@ class ArchiveWorkflow(QWidget):
 
     def set_archive_complete(self, result: ArchiveRunResult) -> None:
         self._archive_running = False
-        if result.status == "VERIFIED":
+        self._last_operation_id = result.operation_id
+        self.retry_button.setEnabled(result.status != "VERIFIED")
+        if result.detail.startswith("Paused by you"):
+            self.report_title.setText("Archive paused")
+        elif result.status == "VERIFIED":
             self.report_title.setText("Archive verified")
         elif result.status == "PARTIAL":
             self.report_title.setText("Archive completed with exceptions")
@@ -428,8 +479,22 @@ class ArchiveWorkflow(QWidget):
             f"Verified: {result.verified_count:,}\n"
             f"Exceptions: {result.failed_count:,}\n"
             f"Size: {self._format_bytes(result.total_bytes)}\n"
-            f"Saved to: {result.archive_path}"
+            f"Saved to: {result.archive_path}\n"
+            f"{result.detail}\n"
+            f"Not verified: {result.selected_count - result.verified_count:,}\n"
+            + "\n".join(result.unresolved[:50])
+            + ("\nSave the report to see all unresolved items."
+               if len(result.unresolved) > 50 else "")
         )
+        self._report_text = (
+            f"{self.report_title.text()}\n"
+            f"Selected: {result.selected_count}\nExported: {result.exported_count}\n"
+            f"Verified: {result.verified_count}\nExceptions: {result.failed_count}\n"
+            f"Not verified: {result.selected_count - result.verified_count}\n"
+            f"Bytes: {result.total_bytes}\nSaved to: {result.archive_path}\n"
+            f"{result.detail}\n\nUnresolved messages:\n" + "\n".join(result.unresolved)
+        )
+        self.save_report_button.setEnabled(True)
         self.verify_progress.setRange(0, max(result.selected_count, 1))
         self.verify_progress.setValue(result.verified_count)
         self.verify_label.setText("Verification complete. Continue to the archive report.")
@@ -442,6 +507,8 @@ class ArchiveWorkflow(QWidget):
         self._archive_running = False
         self.report_title.setText("Archive stopped safely")
         self.report_detail.setText(message)
+        self.retry_button.setEnabled(False)
+        self.save_report_button.setEnabled(False)
         self.set_step(6)
 
     @staticmethod
@@ -752,6 +819,8 @@ class ArchiveWorkflow(QWidget):
         self.verify_label.setText("Waiting for archive export")
         self.report_title.setText("Archive not started")
         self.report_detail.setText("No result is available yet.")
+        self.retry_button.setEnabled(False)
+        self.save_report_button.setEnabled(False)
         if self._era_scan_complete and self.era_combo.count() == len(self.quick_archive_buttons):
             self.selection_mode.setCurrentText("Quick archive thirds")
             for button in self.quick_archive_buttons:

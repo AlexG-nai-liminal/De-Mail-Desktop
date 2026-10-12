@@ -39,6 +39,9 @@ def test_security_claims_include_local_only_and_limited_use() -> None:
 def test_submission_cannot_be_mistaken_for_complete() -> None:
     checklist = read("SUBMISSION_CHECKLIST.md")
     assert "[ ]" in checklist
-    for placeholder in ("[VERSION]", "[SIGNED_INSTALLER_FILENAME]", "[INSTALLER_SHA256]"):
-        assert placeholder in checklist
+    for pending_gate in (
+        "Installer Authenticode-signed",
+        "No public installer released before approval",
+    ):
+        assert f"- [ ] {pending_gate}" in checklist
     assert "No public installer released before approval" in checklist

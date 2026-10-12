@@ -25,6 +25,21 @@ def test_tagged_release_requires_matching_version_and_signatures() -> None:
     assert "signtool.FullName sign" in workflow
     assert workflow.count("signtool.FullName verify") == 2
     assert "Tagged releases require" in workflow
+    assert workflow.count("if ($LASTEXITCODE -ne 0)") >= 4
+    assert "pyside6-deploy --config-file pysidedeploy.spec" in workflow
+    assert ".venv\\Scripts\\pyside6-deploy.exe" not in workflow
+
+
+def test_publication_requires_google_approval_and_validated_identity():
+    workflow = WORKFLOW.read_text(encoding="utf-8")
+    assert "$env:GOOGLE_OAUTH_VERIFIED -ne 'true'" in workflow
+    assert "GOOGLE_DESKTOP_OAUTH_CLIENT_JSON" in workflow
+    assert "python tools/configure_oauth.py $clientFile" in workflow
+    assert workflow.index("Check public release prerequisites") < workflow.index(
+        "Build standalone application"
+    )
+    assert "Desktop OAuth identity validation failed" in workflow
+    assert "Public release publication failed" in workflow
 
 
 def test_workflow_publishes_only_setup_and_checksum_assets() -> None:

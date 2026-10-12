@@ -4,6 +4,7 @@ import tomllib
 from pathlib import Path
 
 from demail import __version__
+from tools.versioning import read_version
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -23,8 +24,8 @@ def test_deployment_configuration_uses_windows_gui_standalone_mode() -> None:
     assert "--include-data-files=CHANGELOG.md=CHANGELOG.md" in (
         config["nuitka"]["extra_args"]
     )
-    assert "--file-version=0.2.0.0" in config["nuitka"]["extra_args"]
-    assert "--product-version=0.2.0.0" in config["nuitka"]["extra_args"]
+    assert f"--file-version={__version__}.0" in config["nuitka"]["extra_args"]
+    assert f"--product-version={__version__}.0" in config["nuitka"]["extra_args"]
     assert '--product-name="de-Mail Desktop"' in config["nuitka"]["extra_args"]
     assert '--file-description="de-Mail Desktop"' in config["nuitka"]["extra_args"]
     assert set(config["qt"]["modules"].split(",")) == {"Core", "Gui", "Widgets"}
@@ -43,7 +44,7 @@ def test_package_and_runtime_versions_remain_identical() -> None:
         project = tomllib.load(stream)
     assert project["project"]["dynamic"] == ["version"]
     assert project["tool"]["hatch"]["version"]["path"] == "src/demail/__init__.py"
-    assert __version__ == "0.2.0"
+    assert __version__ == str(read_version())
 
 
 def test_runtime_dependency_surface_is_intentional_and_bounded() -> None:

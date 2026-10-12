@@ -29,6 +29,12 @@ execute anything returned by the update service.
    `WINDOWS_SIGNING_CERTIFICATE_PASSWORD`.
 5. Keep GitHub Actions permission for the private repository's workflow at `Contents: Read
    and write` so it can create the matching private release.
+6. Store the validated production Desktop client JSON as the Actions secret
+   `GOOGLE_DESKTOP_OAUTH_CLIENT_JSON`. The workflow validates it before packaging; it
+   must never be committed to source control.
+7. Set the Actions repository variable `GOOGLE_OAUTH_VERIFIED` to `true` only after
+   confirming Google's final scope approval. Tagged publication fails closed while
+   this is unset, false, or any required release secret is missing.
 
 The public token cannot read the private repository. The default workflow token cannot write
 to the public repository. The signing certificate is decoded only on the temporary Windows
@@ -56,3 +62,29 @@ public release-only repository.
 
 Manual workflow runs build downloadable test artifacts but do not publish a GitHub release.
 Local setup builds are intentionally unsigned and cannot be promoted by the tagged workflow.
+
+## Clean Windows release check
+
+Use a disposable Windows account or VM before public release. Do not perform uninstall
+experiments against the owner's existing installation.
+
+1. Install the signed setup as a standard user; verify the installed version and signature.
+2. Confirm the production Google client is built in and the privacy disclosure appears before
+   connection. Connect a test account and archive harmless messages, including an attachment.
+3. Compare the saved originals with Gmail, inspect the manifest, and confirm all selected items
+   were verified. Confirm disconnect removes the local credential.
+4. Install the next release over the existing installation and confirm settings, history,
+   saved archives, and account authorization survive the upgrade.
+5. Uninstall and confirm user-created archives remain available. Reinstall and reconnect.
+
+For planned 0.3, additionally pause during export and verification, resume, remove or alter a
+test archive file, and verify again while disconnected from Google. Exercise a full/read-only
+drive and confirm the report offers the correct recovery action. Destination checks require
+at least 16 MiB free to start; they do not predict the size of every selected message.
+
+### Status as of October 12, 2026
+
+Google data-access verification has been submitted and is under review. The public feed
+repository exists, but the private repository has no Actions secrets configured. A trusted
+signing certificate, publishing token, and production Desktop identity secret are required.
+Windows Sandbox is not installed on this machine; the clean-account/VM check is still pending.

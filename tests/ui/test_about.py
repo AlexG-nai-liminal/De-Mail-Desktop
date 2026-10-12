@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from demail import __version__
 from demail.ui.about import (
     MAX_CHANGELOG_CHARACTERS,
     AboutPage,
@@ -28,7 +29,7 @@ def test_about_is_main_navigation_item_below_help(qtbot) -> None:
 
     assert window.content.currentWidget() is window.about_page
     assert window.about_page.check_button.text() == "Check for update"
-    assert "Version 0.2.0" in [
+    assert f"Version {__version__}" in [
         label.text()
         for label in window.about_page.findChildren(type(window.about_page.status_label))
     ]
@@ -84,7 +85,7 @@ def test_update_controller_recovers_from_unexpected_checker_failure(qtbot) -> No
     controller.completed.connect(results.append)
     controller.check()
 
-    assert results == [UpdateResult(UpdateState.UNAVAILABLE, "0.2.0")]
+    assert results == [UpdateResult(UpdateState.UNAVAILABLE, __version__)]
     assert not controller._tasks
 
 

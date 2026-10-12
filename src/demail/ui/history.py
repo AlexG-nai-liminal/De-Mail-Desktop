@@ -27,6 +27,7 @@ class HistoryRepository(Protocol):
 class HistoryPage(QWidget):
     refresh_requested = Signal()
     resume_requested = Signal(int)
+    verify_requested = Signal(int)
     open_folder_requested = Signal(str)
 
     def __init__(self, parent: QWidget | None = None) -> None:
@@ -67,6 +68,9 @@ class HistoryPage(QWidget):
         self.open_button.clicked.connect(self._open_selected)
         actions.addWidget(self.resume_button)
         actions.addWidget(self.open_button)
+        self.verify_button = QPushButton("Verify local archive again")
+        self.verify_button.clicked.connect(self._verify_selected)
+        actions.addWidget(self.verify_button)
         actions.addStretch()
         card.layout.addLayout(actions)
         layout.addWidget(card)
@@ -82,6 +86,8 @@ class HistoryPage(QWidget):
         for operation in items:
             created = self._display_date(operation.created_at)
             status = operation.status.value.replace("_", " ").title()
+            if operation.status_detail.startswith("Paused by you"):
+                status = "Paused"
             item = QListWidgetItem(
                 f"{created}  |  {status}\n{operation.selection_description}"
             )
@@ -110,6 +116,7 @@ class HistoryPage(QWidget):
         if operation is None:
             self.resume_button.setEnabled(False)
             self.open_button.setEnabled(False)
+            self.verify_button.setEnabled(False)
             return
         self.detail.setText(
             f"Account: {operation.account_email}\n"
@@ -117,7 +124,7 @@ class HistoryPage(QWidget):
             f"Exported: {operation.exported_count:,}\n"
             f"Verified: {operation.verified_count:,}\n"
             f"Exceptions: {operation.failed_count:,}\n"
-            f"Archive: {operation.archive_path}"
+            f"Archive: {operation.archive_path}\n{operation.status_detail}"
         )
         self.resume_button.setEnabled(operation.can_resume)
         if operation.worker_locked:
@@ -125,6 +132,14 @@ class HistoryPage(QWidget):
         else:
             self.resume_button.setToolTip("")
         self.open_button.setEnabled(operation.archive_path.is_dir())
+        self.verify_button.setEnabled(
+            operation.archive_path.is_dir() and not operation.worker_locked
+        )
+
+    def _verify_selected(self) -> None:
+        operation = self._selected()
+        if operation and self.verify_button.isEnabled():
+            self.verify_requested.emit(operation.operation_id)
 
     def _resume_selected(self) -> None:
         operation = self._selected()
@@ -172,6 +187,8 @@ class _HistoryWork(QRunnable):
                     verified_count=row["verified_count"],
                     failed_count=row["failed_count"],
                     total_bytes=row["total_bytes"],
+                    status_detail=(row["status_detail"] or "")
+                    if "status_detail" in row.keys() else "",  # noqa: SIM118 -- sqlite3.Row
                     worker_locked=self._worker_is_active(
                         row["worker_token"], row["worker_acquired_at"]
                     ),

@@ -4,6 +4,7 @@ import json
 import sqlite3
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from threading import Event
 
 import pytest
 
@@ -80,6 +81,106 @@ def prepare(
         now=datetime(2026, 9, 9, 14, 30, tzinfo=UTC),
     )
     return engine, operation_id
+
+
+@pytest.mark.parametrize("phase", ["export", "verify"])
+def test_user_pause_preserves_completed_files_and_resumes(repository, tmp_path, phase):
+    gmail = FakeGmail({"a": b"one", "b": b"two"})
+    engine, identity = prepare(repository, gmail, tmp_path / "chosen")
+    stop = Event()
+    engine.set_pause_event(stop)
+    def pause_after_first(progress):
+        if progress.phase == phase and progress.completed == 1:
+            stop.set()
+    engine.run(identity, pause_after_first)
+    operation = repository.operation(identity)
+    assert operation["status"] == "PARTIAL"
+    assert "Paused by you" in operation["status_detail"]
+    assert operation["worker_token"] is None
+    stop.clear()
+    engine.run(identity)
+    assert repository.operation(identity)["status"] == "VERIFIED"
+    assert gmail.downloaded == ["a", "b"]
+
+
+def test_pause_before_first_download_is_recoverable(repository, tmp_path):
+    gmail = FakeGmail({"a": b"one"})
+    engine, identity = prepare(repository, gmail, tmp_path / "chosen")
+    engine.pause_event.set()
+    engine.run(identity)
+    assert gmail.downloaded == []
+    assert repository.operation(identity)["exported_count"] == 0
+    engine.pause_event.clear()
+    engine.run(identity)
+    assert repository.operation(identity)["status"] == "VERIFIED"
+
+
+def test_preflight_failure_does_not_contact_google_and_can_recover(
+    repository, tmp_path, monkeypatch
+):
+    import errno
+    gmail = FakeGmail({"a": b"one"})
+    engine = ArchiveOperationEngine(gmail, repository)
+    with monkeypatch.context() as patch:
+        def fail(_):
+            raise OSError(errno.ENOSPC, "full")
+        patch.setattr("demail.jobs.archive_operation.check_destination", fail)
+        patch.setattr(gmail, "profile", lambda: pytest.fail("Preflight contacted Google"))
+        with pytest.raises(OSError):
+            engine.prepare(SelectionCriteria(), tmp_path / "chosen")
+    assert not repository.operations()
+    assert not (tmp_path / "chosen").exists()
+    identity = engine.prepare(SelectionCriteria(), tmp_path / "chosen")
+    engine.run(identity)
+    assert repository.operation(identity)["status"] == "VERIFIED"
+
+
+def test_offline_verification_publication_failure_is_resumable(repository, tmp_path, monkeypatch):
+    gmail = FakeGmail({"a": b"one"})
+    engine, identity = prepare(repository, gmail, tmp_path / "chosen")
+    engine.run(identity)
+    with monkeypatch.context() as patch:
+        def fail(*_):
+            raise OSError("drive disconnected")
+        patch.setattr("demail.jobs.archive_operation.write_manifest", fail)
+        with pytest.raises(OSError):
+            engine.verify_existing(identity)
+    assert repository.operation(identity)["status"] == "VERIFYING"
+    assert repository.operation(identity)["worker_token"] is None
+    engine.verify_existing(identity)
+    assert repository.operation(identity)["status"] == "VERIFIED"
+    assert gmail.downloaded == ["a"]
+
+
+@pytest.mark.parametrize("damage,expected", [
+    ("none", "VERIFIED"), ("missing", "MISSING"),
+    ("size", "SIZE_MISMATCH"), ("hash", "HASH_MISMATCH")
+])
+def test_local_reverification_never_calls_google(repository, tmp_path, damage, expected):
+    gmail = FakeGmail({"a": b"one"})
+    engine, identity = prepare(repository, gmail, tmp_path / "chosen")
+    engine.run(identity)
+    operation = repository.operation(identity)
+    row = repository.messages(identity)[0]
+    file = (tmp_path / "chosen" / "de-Mail Archive" /
+            operation["archive_folder_name"] / "messages" / row["file_name"])
+    if damage == "missing":
+        file.unlink()
+    elif damage == "size":
+        file.write_bytes(b"longer")
+    elif damage == "hash":
+        file.write_bytes(b"two")
+    class NoGoogle:
+        def __getattr__(self, _):
+            raise AssertionError("Offline verification contacted Google")
+    engine.gmail = NoGoogle()
+    engine.verify_existing(identity)
+    assert repository.messages(identity)[0]["verification"] == expected
+    assert repository.operation(identity)["status"] == (
+        "VERIFIED" if damage == "none" else "PARTIAL"
+    )
+    manifest = json.loads((file.parent.parent / "manifest.json").read_text())
+    assert manifest["messages"][0]["verification"] == expected
 
 
 def test_prepare_materializes_fixed_selection_before_any_download(
@@ -262,7 +363,7 @@ def test_authorization_failure_pauses_remaining_requests_for_reconnect(
     operation = repository.operation(operation_id)
     assert operation["status"] == "PARTIAL"
     assert operation["status_detail"] == (
-        "Google authorization is unavailable. Reconnect, then resume."
+        "Google authorization is unavailable. Reconnect the original account, then resume."
     )
     rows = repository.messages(operation_id)
     assert [row["verification"] for row in rows] == ["EXPORT_FAILED", "PENDING"]

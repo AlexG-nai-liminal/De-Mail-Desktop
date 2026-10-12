@@ -3,8 +3,10 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from threading import Event
 from typing import Protocol
 
+from demail.archive.destination import check_destination
 from demail.archive.eml_scanner import scan_eml
 from demail.archive.filenames import eml_filename
 from demail.archive.layout import create_archive_folders, require_safe_archive_component
@@ -19,6 +21,7 @@ from demail.gmail.client import (
     SelectionResult,
 )
 from demail.gmail.query import build_query
+from demail.jobs.failures import explain_failure
 from demail.jobs.worker_lock import WorkerLockedError, archive_worker_lock
 from demail.persistence.archive_repository import ArchiveRepository
 
@@ -54,11 +57,16 @@ class ArchiveOperationEngine:
     def __init__(self, gmail: GmailArchiveSource, repository: ArchiveRepository) -> None:
         self.gmail = gmail
         self.repository = repository
+        self.pause_event = Event()
+
+    def set_pause_event(self, event: Event) -> None:
+        self.pause_event = event
 
     def prepare(
         self, criteria: SelectionCriteria, destination: Path, now: datetime | None = None
     ) -> int:
         created_at = now or datetime.now(UTC)
+        check_destination(destination)
         profile = self.gmail.profile()
         selection = self.gmail.resolve_selection(criteria)
         folders = create_archive_folders(destination, created_at, criteria.describe())
@@ -92,10 +100,19 @@ class ArchiveOperationEngine:
         except WorkerLockedError as error:
             raise OperationAlreadyRunningError(str(error)) from error
 
+    def verify_existing(self, operation_id: int, progress=None) -> None:
+        """Read local files again without calling Google or downloading messages."""
+        try:
+            with archive_worker_lock(self.repository.database.path, operation_id):
+                self._run_locked(operation_id, progress, verification_only=True)
+        except WorkerLockedError as error:
+            raise OperationAlreadyRunningError(str(error)) from error
+
     def _run_locked(
         self,
         operation_id: int,
         progress: Callable[[ArchiveProgress], None] | None,
+        verification_only: bool = False,
     ) -> None:
         token = uuid.uuid4().hex
         if not self.repository.acquire_worker(
@@ -103,7 +120,7 @@ class ArchiveOperationEngine:
         ):
             raise OperationAlreadyRunningError("This archive operation is already running.")
         try:
-            self._run_owned(operation_id, progress)
+            self._run_owned(operation_id, progress, verification_only)
         finally:
             self.repository.release_worker(operation_id, token)
 
@@ -111,18 +128,20 @@ class ArchiveOperationEngine:
         self,
         operation_id: int,
         progress: Callable[[ArchiveProgress], None] | None,
+        verification_only: bool = False,
     ) -> None:
         operation = self.repository.operation(operation_id)
         if operation is None:
             raise ValueError("Archive operation does not exist.")
-        profile = self.gmail.profile()
-        if (
-            not profile.email_address.strip()
-            or profile.email_address.casefold() != str(operation["account_email"]).casefold()
-        ):
-            raise GoogleAuthorizationError(
-                "Reconnect the Google account used to create this archive before resuming."
-            )
+        if not verification_only:
+            profile = self.gmail.profile()
+            if (
+                not profile.email_address.strip()
+                or profile.email_address.casefold() != str(operation["account_email"]).casefold()
+            ):
+                raise GoogleAuthorizationError(
+                    "Reconnect the Google account used to create this archive before resuming."
+                )
         try:
             archive_folder_name = require_safe_archive_component(
                 str(operation["archive_folder_name"])
@@ -141,7 +160,7 @@ class ArchiveOperationEngine:
             return
 
         total = operation["selected_count"]
-        pending = self.repository.pending_messages(operation_id)
+        pending = [] if verification_only else self.repository.pending_messages(operation_id)
         completed_before = total - len(pending)
         self.repository.set_status(operation_id, "EXPORTING")
         if progress:
@@ -149,6 +168,9 @@ class ArchiveOperationEngine:
         processed = completed_before
         pause_detail: str | None = None
         for row in pending:
+            if self.pause_event.is_set():
+                self._paused(operation_id)
+                return
             message_id = row["gmail_message_id"]
             try:
                 metadata = self.gmail.metadata(message_id)
@@ -182,6 +204,9 @@ class ArchiveOperationEngine:
         if progress:
             progress(ArchiveProgress("verify", 0, total))
         for processed, row in enumerate(rows, start=1):
+            if self.pause_event.is_set():
+                self._paused(operation_id)
+                return
             if row["exported"] and row["sha256"]:
                 try:
                     file_name = require_safe_archive_component(
@@ -225,20 +250,24 @@ class ArchiveOperationEngine:
         if pause_detail:
             self.repository.set_status(operation_id, status, pause_detail)
 
+    def _paused(self, operation_id: int) -> None:
+        self.repository.refresh_counts(operation_id)
+        self.repository.set_status(
+            operation_id, "PARTIAL", "Paused by you. Resume safely from History."
+        )
+
     @staticmethod
     def _safe_failure(error: Exception) -> str:
-        if isinstance(error, OSError):
-            return "The message could not be written to the destination."
-        return "The message could not be archived safely."
+        return explain_failure(error)
 
     @staticmethod
     def _pause_detail(error: Exception) -> str | None:
         if isinstance(error, GoogleAuthorizationError) or (
             isinstance(error, GmailApiError) and error.status_code in {401, 403}
         ):
-            return "Google authorization is unavailable. Reconnect, then resume."
+            return explain_failure(error)
         if isinstance(error, OSError):
-            return "The destination became unavailable. Reconnect it, then resume."
+            return explain_failure(error)
         if isinstance(error, GmailApiError) and error.connection_failure:
-            return "The Gmail connection was interrupted. Check the network, then resume."
+            return explain_failure(error)
         return None

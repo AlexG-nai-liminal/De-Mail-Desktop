@@ -38,14 +38,15 @@
 
 ## Reviewer submission
 
-- [x] Scope justification entered in review form; unsaved until required demo URL is supplied
-- [ ] Demo video follows the supplied script
-- [ ] Demo video URL: `[DEMO_VIDEO_URL]`
+- [x] Scope justification and demo URL saved in the review form on October 2, 2026
+- [x] Demo video recorded, edited, and uploaded unlisted
+- [x] Demo video URL: https://youtu.be/08roaCv6p34
 - [ ] Reviewer account and instructions supplied if Google requests them
 - [ ] Archive workflow and local-only storage explained
 - [ ] Narrower-scope evidence supplied
-- [ ] Final submission details checked by the product owner
-- [ ] Explicit approval obtained immediately before **Submit for Verification**
+- [x] Final submission details checked with the product owner on October 12, 2026
+- [x] Explicit approval obtained immediately before **Submit for Verification** on October 12
+- [x] Submission completed; Google Verification Center reports data access **under review**
 
 ## Post-submission
 
@@ -53,3 +54,13 @@
 - [ ] Reviewer questions and requested changes tracked
 - [ ] No public installer released before approval
 - [ ] Production OAuth client made default only in approved signed releases
+
+## Release status checked October 12, 2026
+
+- Public release-only repository exists.
+- GitHub Actions repository and environment secrets are empty; signing, OAuth packaging,
+  and public publishing credentials must be configured before a tagged release.
+- Google Cloud reports branding verified and data access under review after submission on
+  October 12, 2026. Final scope approval is pending.
+- The private local 0.2.0 installer was rebuilt October 3. Its current checksum is in
+  `dist/installer/SHA256SUMS.txt`; the October 2 hash above identifies the earlier review build.

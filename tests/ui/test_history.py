@@ -75,6 +75,32 @@ def test_empty_history_and_malformed_date_are_presented_safely(qtbot, tmp_path: 
     assert "Unknown date" in page.operations.item(0).text()
 
 
+def test_offline_verify_action_and_unavailable_archive(qtbot, tmp_path):
+    page = HistoryPage()
+    qtbot.addWidget(page)
+    operation = item(tmp_path)
+    page.set_items((operation,))
+    with qtbot.waitSignal(page.verify_requested) as requested:
+        page.verify_button.click()
+    assert requested.args == [7]
+    page.set_items((item(tmp_path, worker_locked=True),))
+    assert not page.verify_button.isEnabled()
+    operation.archive_path.rmdir()
+    page.set_items((operation,))
+    assert not page.verify_button.isEnabled()
+    page.set_items(())
+    assert not page.verify_button.isEnabled()
+
+
+def test_paused_history_shows_recovery_explanation(qtbot, tmp_path):
+    page = HistoryPage()
+    qtbot.addWidget(page)
+    page.set_items((item(tmp_path, status_detail="Paused by you. Resume from History."),))
+    assert "Paused" in page.operations.item(0).text()
+    assert "Paused by you" in page.detail.text()
+    assert page.resume_button.isEnabled()
+
+
 class Repository:
     def operations(self, limit=100):
         return [

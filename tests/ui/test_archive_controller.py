@@ -78,3 +78,36 @@ def test_controller_rejects_invalid_resume_identity() -> None:
     controller = ArchiveController(Engine, ImmediatePool())
     with pytest.raises(ValueError, match="positive"):
         controller.resume(0)
+
+
+def test_controller_verifies_existing_without_preparing_or_downloading(qtbot):
+    class VerifyEngine(Engine):
+        def prepare(self, *_):
+            raise AssertionError("Offline verification prepared a new operation")
+        def run(self, *_):
+            raise AssertionError("Offline verification attempted downloads")
+        def verify_existing(self, identity, progress):
+            assert identity == 12
+            progress(ArchiveProgress("verify", 1, 1))
+    controller = ArchiveController(VerifyEngine, ImmediatePool())
+    with qtbot.waitSignal(controller.completed):
+        controller.verify_existing(12)
+    assert not controller.busy
+    with pytest.raises(ValueError):
+        controller.verify_existing(-1)
+
+
+def test_controller_pause_and_overlap_guard():
+    class HeldPool:
+        def start(self, task):
+            self.task = task
+    pool = HeldPool()
+    controller = ArchiveController(Engine, pool)
+    controller.resume(12)
+    assert controller.busy
+    with pytest.raises(RuntimeError, match="already running"):
+        controller.verify_existing(12)
+    controller.pause()
+    assert pool.task.pause_event.is_set()
+    pool.task.run()
+    assert not controller.busy

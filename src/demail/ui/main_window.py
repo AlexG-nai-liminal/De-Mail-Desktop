@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from demail.archive.report import save_report
 from demail.auth.client_config import OAuthClientConfigError
 from demail.auth.client_source import describe_oauth_source, resolve_oauth_client
 from demail.windows.shell import open_email_draft, open_folder, open_release_page
@@ -294,6 +295,10 @@ class MainWindow(QMainWindow):
         flow = self.archive_workflow
         flow.destination_requested.connect(self._choose_destination)
         flow.archive_requested.connect(controller.start)
+        flow.pause_requested.connect(controller.pause)
+        flow.retry_requested.connect(self._resume_operation)
+        flow.save_report_requested.connect(self._save_archive_report)
+        self.history_page.verify_requested.connect(self._verify_operation)
         controller.started.connect(flow.set_archive_started)
         controller.progress.connect(flow.set_archive_progress)
         controller.completed.connect(flow.set_archive_complete)
@@ -346,8 +351,34 @@ class MainWindow(QMainWindow):
         if self.archive_controller is None:
             self.history_page.set_error("Archive recovery is unavailable.")
             return
+        if self.archive_controller.busy:
+            self.history_page.set_error("Pause the current operation before resuming another.")
+            return
         self.show_page(0)
         self.archive_controller.resume(operation_id)
+
+    def _verify_operation(self, operation_id: int) -> None:
+        if self.archive_controller is None:
+            self.history_page.set_error("Archive verification is unavailable.")
+            return
+        if self.archive_controller.busy:
+            self.history_page.set_error("Pause the current operation before verifying another.")
+            return
+        self.show_page(0)
+        self.archive_controller.verify_existing(operation_id)
+
+    def _save_archive_report(self, text: str) -> None:
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Save archive report", "de-Mail-archive-report.txt", "Text files (*.txt)"
+        )
+        if not path:
+            return
+        try:
+            save_report(Path(path), text)
+        except (OSError, ValueError):
+            self.archive_workflow.report_detail.setText(
+                "The report could not be saved. Check the destination and try again."
+            )
 
     def _open_history_folder(self, path: str) -> None:
         try:

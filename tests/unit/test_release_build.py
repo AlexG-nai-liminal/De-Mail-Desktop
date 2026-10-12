@@ -2,6 +2,7 @@ from pathlib import Path
 
 import pytest
 
+from demail import __version__
 from demail.app import main, run_selftest
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -50,4 +51,4 @@ def test_release_test_modes_are_mutually_exclusive(capsys) -> None:
 
 def test_version_mode_reports_runtime_version(capsys) -> None:
     assert main(["--version"]) == 0
-    assert capsys.readouterr().out.strip() == "0.2.0"
+    assert capsys.readouterr().out.strip() == __version__

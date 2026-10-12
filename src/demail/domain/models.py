@@ -83,6 +83,7 @@ class ArchiveHistoryItem:
     failed_count: int
     total_bytes: int
     worker_locked: bool = False
+    status_detail: str = ""
 
     def __post_init__(self) -> None:
         if self.operation_id <= 0:

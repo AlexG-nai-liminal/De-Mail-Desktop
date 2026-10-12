@@ -279,6 +279,41 @@ def test_archive_progress_and_verified_report(qtbot, tmp_path: Path) -> None:
     assert flow.next_button.text() == "Archive more"
 
 
+def test_pause_controls_disable_until_next_run(qtbot):
+    flow = ArchiveWorkflow()
+    qtbot.addWidget(flow)
+    flow.set_archive_started()
+    with qtbot.waitSignal(flow.pause_requested):
+        flow.pause_button.click()
+    assert not flow.pause_button.isEnabled()
+    assert not flow.verify_pause_button.isEnabled()
+    flow.set_archive_error("Drive unavailable")
+    flow.set_archive_started()
+    assert flow.pause_button.isEnabled() and flow.verify_pause_button.isEnabled()
+
+
+def test_partial_report_retry_and_complete_export(qtbot, tmp_path):
+    flow = ArchiveWorkflow()
+    qtbot.addWidget(flow)
+    issues = tuple(f"message-{i}: MISSING" for i in range(51))
+    flow.set_archive_complete(ArchiveRunResult(
+        7, "PARTIAL", 51, 51, 0, 51, 100, tmp_path,
+        "Paused by you. Resume safely from History.", issues,
+    ))
+    assert flow.report_title.text() == "Archive paused"
+    assert "Not verified: 51" in flow.report_detail.text()
+    assert "message-50" not in flow.report_detail.text()
+    with qtbot.waitSignal(flow.save_report_requested) as saved:
+        flow.save_report_button.click()
+    assert "message-50: MISSING" in saved.args[0]
+    with qtbot.waitSignal(flow.retry_requested) as retry:
+        flow.retry_button.click()
+    assert retry.args == [7]
+    flow.reset_for_another_archive()
+    assert not flow.retry_button.isEnabled()
+    assert not flow.save_report_button.isEnabled()
+
+
 def test_archive_more_returns_to_connected_start_and_clears_previous_run(
     qtbot, tmp_path: Path
 ) -> None:

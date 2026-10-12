@@ -4,6 +4,8 @@ from pathlib import Path
 
 import pytest
 
+from demail import __version__
+
 ROOT = Path(__file__).resolve().parents[2]
 MODULE_PATH = ROOT / "tools" / "build_installer.py"
 SPEC = importlib.util.spec_from_file_location("build_installer", MODULE_PATH)
@@ -26,7 +28,7 @@ def test_installer_contract_is_per_user_branded_and_preserves_user_data() -> Non
     version_include = (ROOT / "installer" / "version.iss").read_text(encoding="utf-8")
 
     assert '#include "version.iss"' in script
-    assert '#define MyAppVersion "0.2.0"' in version_include
+    assert f'#define MyAppVersion "{__version__}"' in version_include
     assert "PrivilegesRequired=lowest" in script
     assert "UsePreviousAppDir=yes" in script
     assert "DefaultDirName={localappdata}\\Programs\\{#MyAppName}" in script
