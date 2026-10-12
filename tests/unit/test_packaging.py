@@ -16,6 +16,8 @@ def test_deployment_configuration_uses_windows_gui_standalone_mode() -> None:
     assert config["app"]["input_file"] == "main.py"
     assert config["app"]["icon"] == "src/demail/assets/de-mail.ico"
     assert config["nuitka"]["mode"] == "standalone"
+    assert "--assume-yes-for-downloads" in config["nuitka"]["extra_args"]
+    assert "--quiet" not in config["nuitka"]["extra_args"]
     assert "--windows-console-mode=disable" in config["nuitka"]["extra_args"]
     assert "--include-package=demail" in config["nuitka"]["extra_args"]
     assert "--include-data-dir=src/demail/assets=demail/assets" in (
