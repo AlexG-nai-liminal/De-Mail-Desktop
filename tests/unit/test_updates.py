@@ -13,6 +13,16 @@ from demail.updates import (
 )
 
 
+@pytest.mark.parametrize("state,value", [
+    (UpdateState.CURRENT, "current"),
+    (UpdateState.AVAILABLE, "available"),
+    (UpdateState.UNAVAILABLE, "unavailable"),
+])
+def test_update_state_preserves_json_and_diagnostic_contract(state, value):
+    assert json.loads(json.dumps({"state": state})) == {"state": value}
+    assert str(state) == f"UpdateState.{state.name}"
+
+
 class FakeResponse:
     def __init__(self, payload: bytes, content_type: str = "application/json") -> None:
         self.stream = BytesIO(payload)

@@ -29,7 +29,8 @@ class Response(Protocol):
     def __exit__(self, *args: object) -> None: ...
 
 
-class UpdateState(str, Enum):
+# Keep diagnostic names from str(state), while JSON uses the lowercase string value.
+class UpdateState(str, Enum):  # noqa: UP042
     CURRENT = "current"
     AVAILABLE = "available"
     UNAVAILABLE = "unavailable"
