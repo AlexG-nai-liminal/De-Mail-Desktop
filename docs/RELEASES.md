@@ -2,7 +2,7 @@
 
 ## Repository split
 
-`AlexG-nai-liminal/De-Mail-Desktop` is the private source repository. It contains code,
+`AlexG-nai-liminal/De-Mail-Desktop` is the source repository. It contains code,
 tests, and the Windows build workflow.
 
 `AlexG-nai-liminal/de-mail-desktop-releases` is the public release-only repository. It
@@ -39,6 +39,12 @@ execute anything returned by the update service.
 The public token cannot read the private repository. The default workflow token cannot write
 to the public repository. The signing certificate is decoded only on the temporary Windows
 runner and deleted before the job ends.
+
+Source visibility was confirmed public on October 12, 2026. An encrypted Actions secret does
+not make workflow artifacts private. Unsigned test installers are uploaded only when the
+source repository is private. A public source repository can upload a tagged installer only
+after the Google approval and signature gates have passed. Public source remains publicly
+readable regardless of publishing-token permissions.
 
 ## Making a release
 
@@ -86,7 +92,9 @@ at least 16 MiB free to start; they do not predict the size of every selected me
 
 Google data-access verification has been submitted and is under review. The public feed
 repository exists. The production Desktop identity is configured as the private Actions secret
-`GOOGLE_DESKTOP_OAUTH_CLIENT_JSON`. Manual workflows build unsigned private test artifacts.
+`GOOGLE_DESKTOP_OAUTH_CLIENT_JSON`. The source repository is currently public, so manual
+unsigned installer uploads are blocked. Keep preview installers local or make the source
+repository private before using downloadable preview artifacts.
 A trusted signing certificate and publishing token are still required by the tagged public
 release workflow.
 Windows Sandbox is not installed on this machine; the clean-account/VM check is still pending.

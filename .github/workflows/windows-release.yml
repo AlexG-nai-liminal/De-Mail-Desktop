@@ -168,6 +168,8 @@ jobs:
             [Text.UTF8Encoding]::new($false)
           )
       - uses: actions/upload-artifact@v4
+        # Public source repositories must not expose an unapproved test installer.
+        if: github.event.repository.private || (startsWith(github.ref, 'refs/tags/v') && vars.GOOGLE_OAUTH_VERIFIED == 'true')
         with:
           name: de-Mail-Desktop-${{ steps.version.outputs.version }}
           path: |

@@ -74,6 +74,15 @@ def test_workflow_publishes_only_setup_and_checksum_assets() -> None:
     assert "CHANGELOG.md" not in public_step
 
 
+def test_test_installer_upload_is_guarded_by_repository_visibility():
+    workflow = WORKFLOW.read_text(encoding="utf-8")
+    upload = workflow.split("- uses: actions/upload-artifact@v4", 1)[1].split("with:", 1)[0]
+    assert (
+        "if: github.event.repository.private || "
+        "(startsWith(github.ref, 'refs/tags/v') && vars.GOOGLE_OAUTH_VERIFIED == 'true')"
+    ) in upload
+
+
 def test_release_guide_documents_least_privilege_and_no_silent_execution() -> None:
     guide = GUIDE.read_text(encoding="utf-8")
 
